@@ -1,0 +1,2 @@
+# Extra package for the room simulation in sim/ (not needed on the robot)
+pyroomacoustics

@@ -1,0 +1,26 @@
+Voice-like 'Polo', 10 x 9 x 2.7 m room, 24 directions per row, 30 ms window
+ RT60  dist  method       median    p90  worst
+  0.4    1 m  xcorr          1.09   2.23    2.8
+  0.4    1 m  gcc_phat       0.10   0.20    0.3
+  0.4    1 m  gcc_robust     0.10   0.20    0.3
+  0.4    1 m  srp_phat       0.12   0.26    0.3
+  0.4    2 m  xcorr          0.88   2.13    2.4
+  0.4    2 m  gcc_phat       0.32   0.52    0.7
+  0.4    2 m  gcc_robust     0.32   0.52    0.7
+  0.4    2 m  srp_phat       0.37   0.78    1.1
+  0.4    4 m  xcorr          1.31   1.85    2.5
+  0.4    4 m  gcc_phat       0.68   1.18    1.3
+  0.4    4 m  gcc_robust     0.68   1.18    1.3
+  0.4    4 m  srp_phat       0.76   1.46    1.6
+  0.6    1 m  xcorr          1.17   2.61    3.0
+  0.6    1 m  gcc_phat       0.10   0.18    0.3
+  0.6    1 m  gcc_robust     0.10   0.18    0.3
+  0.6    1 m  srp_phat       0.23   0.37    0.5
+  0.6    2 m  xcorr          0.75   2.50    3.2
+  0.6    2 m  gcc_phat       0.45   1.07    1.2
+  0.6    2 m  gcc_robust     0.45   1.07    1.2
+  0.6    2 m  srp_phat       0.64   1.28    1.7
+  0.6    4 m  xcorr          1.14   2.06    2.4
+  0.6    4 m  gcc_phat       0.35   1.05    2.7
+  0.6    4 m  gcc_robust     0.35   1.05    2.7
+  0.6    4 m  srp_phat       0.61   1.34    2.7

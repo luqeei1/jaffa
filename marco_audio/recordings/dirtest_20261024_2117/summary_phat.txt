@@ -1,0 +1,10 @@
+Session: dirtest_20261024_2117   window 5 ms before to 30 ms after onset, n = 24
+method                     mean  median  worst
+Cross-correlation (v2)     1.0°    1.0°   3.2°
+GCC-PHAT                   1.1°    1.0°   2.7°
+GCC-PHAT robust            1.1°    1.0°   2.7°
+SRP-PHAT                   1.0°    0.9°   2.5°
+Chip free-running beam     6.4°    2.7°  98.1°
+Chip DOA_VALUE             8.7°    3.5°  43.0°
+robust fit labels: all x24
+|u| median 0.89; GCC confidence median 0.94

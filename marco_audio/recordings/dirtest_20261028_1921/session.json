@@ -1,0 +1,19 @@
+{
+  "angles": [
+    0,
+    45,
+    90,
+    135,
+    180,
+    225,
+    270,
+    315
+  ],
+  "claps_per_angle": 3,
+  "distance_m": 1.0,
+  "device": 15,
+  "simulated": false,
+  "chip_logged": true,
+  "date": "2026-10-28T19:26:22",
+  "method": "board rotated on printed guide; source fixed at the guide's 0-degree side"
+}

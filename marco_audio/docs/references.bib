@@ -1,0 +1,217 @@
+% Marco audio subsystem - references, checked 28 Oct 2026 against Crossref, OpenAlex and publisher pages.
+% Software entries (Silero VAD, WebRTC VAD) and XMOS documents have no DOI: state the version you used.
+% arXiv entries (warden2018speech) are preprints - label them as such in the report.
+
+% ---------- Direction finding ----------
+@article{knapp1976generalized,
+  author={Knapp, C. H. and Carter, G. C.},
+  title={The generalized correlation method for estimation of time delay},
+  journal={IEEE Transactions on Acoustics, Speech, and Signal Processing},
+  volume={24}, number={4}, pages={320--327}, year={1976}, month=aug,
+  doi={10.1109/TASSP.1976.1162830}}
+
+@incollection{dibiase2001robust,
+  author={DiBiase, Joseph H. and Silverman, Harvey F. and Brandstein, Michael S.},
+  title={Robust localization in reverberant rooms},
+  booktitle={Microphone Arrays: Signal Processing Techniques and Applications},
+  editor={Brandstein, Michael and Ward, Darren},
+  series={Digital Signal Processing}, publisher={Springer}, address={Berlin, Heidelberg},
+  year={2001}, chapter={8}, pages={157--180},
+  doi={10.1007/978-3-662-04619-7_8}}
+
+@article{donohue2007performance,
+  author={Donohue, Kevin D. and Hannemann, Jens and Dietz, Henry G.},
+  title={Performance of phase transform for detecting sound sources with microphone arrays in reverberant and noisy environments},
+  journal={Signal Processing},
+  volume={87}, number={7}, pages={1677--1691}, year={2007}, month=jul,
+  doi={10.1016/j.sigpro.2007.01.013}}
+
+% ---------- Robot audition ----------
+@article{grondin2019lightweight,
+  author={Grondin, Fran{\c{c}}ois and Michaud, Fran{\c{c}}ois},
+  title={Lightweight and optimized sound source localization and tracking methods for open and closed microphone array configurations},
+  journal={Robotics and Autonomous Systems},
+  volume={113}, pages={63--80}, year={2019}, month=mar,
+  doi={10.1016/j.robot.2019.01.002}}
+
+@article{grondin2022odas,
+  author={Grondin, Fran{\c{c}}ois and L{\'e}tourneau, Dominic and Godin, C{\'e}dric and Lauzon, Jean-Samuel and Vincent, Jonathan and Michaud, Simon and Faucher, Samuel and Michaud, Fran{\c{c}}ois},
+  title={{ODAS: Open embeddeD Audition System}},
+  journal={Frontiers in Robotics and AI},
+  volume={9}, note={Art. no. 854444}, year={2022}, month=may,
+  doi={10.3389/frobt.2022.854444}}
+
+@article{nakadai2010design,
+  author={Nakadai, Kazuhiro and Takahashi, Toru and Okuno, Hiroshi G. and Nakajima, Hirofumi and Hasegawa, Yuji and Tsujino, Hiroshi},
+  title={Design and implementation of robot audition system `{HARK}' --- Open source software for listening to three simultaneous speakers},
+  journal={Advanced Robotics},
+  volume={24}, number={5--6}, pages={739--761}, year={2010},
+  doi={10.1163/016918610X493561}}
+
+@article{argentieri2015survey,
+  author={Argentieri, S. and Dan{\`e}s, P. and Sou{\`e}res, P.},
+  title={A survey on sound source localization in robotics: From binaural to array processing methods},
+  journal={Computer Speech \& Language},
+  volume={34}, number={1}, pages={87--112}, year={2015}, month=nov,
+  doi={10.1016/j.csl.2015.03.003}}
+
+@article{rascon2017localization,
+  author={Rascon, Caleb and Meza, Ivan},
+  title={Localization of sound sources in robotics: A review},
+  journal={Robotics and Autonomous Systems},
+  volume={96}, pages={184--210}, year={2017}, month=oct,
+  doi={10.1016/j.robot.2017.07.011}}
+
+@inproceedings{valin2003robust,
+  author={Valin, Jean-Marc and Michaud, Fran{\c{c}}ois and Rouat, Jean and L{\'e}tourneau, Dominic},
+  title={Robust sound source localization using a microphone array on a mobile robot},
+  booktitle={Proceedings 2003 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS 2003)},
+  address={Las Vegas, NV, USA}, volume={2}, pages={1228--1233}, year={2003},
+  doi={10.1109/IROS.2003.1248813}}
+
+@inproceedings{he2018deep,
+  author={He, Weipeng and Motlicek, Petr and Odobez, Jean-Marc},
+  title={Deep neural networks for multiple speaker detection and localization},
+  booktitle={2018 IEEE International Conference on Robotics and Automation (ICRA)},
+  address={Brisbane, Australia}, pages={74--79}, year={2018}, month=may,
+  doi={10.1109/ICRA.2018.8461267}}
+
+% ---------- Keyword spotting and voice activity detection ----------
+@inproceedings{chen2014small,
+  author={Chen, Guoguo and Parada, Carolina and Heigold, Georg},
+  title={Small-footprint keyword spotting using deep neural networks},
+  booktitle={2014 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  address={Florence, Italy}, pages={4087--4091}, year={2014}, month=may,
+  doi={10.1109/ICASSP.2014.6854370}}
+
+@inproceedings{sainath2015convolutional,
+  author={Sainath, Tara N. and Parada, Carolina},
+  title={Convolutional neural networks for small-footprint keyword spotting},
+  booktitle={Proc. Interspeech 2015}, address={Dresden, Germany},
+  pages={1478--1482}, year={2015}, month=sep,
+  doi={10.21437/Interspeech.2015-352}}
+
+@misc{warden2018speech,
+  author={Warden, Pete},
+  title={Speech {Commands}: A dataset for limited-vocabulary speech recognition},
+  year={2018}, eprint={1804.03209}, archivePrefix={arXiv}, primaryClass={cs.CL},
+  doi={10.48550/arXiv.1804.03209}}
+
+@inproceedings{banbury2021mlperf,
+  author={Banbury, Colby and Janapa Reddi, Vijay and Torelli, Peter and Holleman, Jeremy and Jeffries, Nat and Kiraly, Csaba and Montino, Pietro and Kanter, David and Ahmed, Sebastian and Pau, Danilo and Thakker, Urmish and Torrini, Antonio and Warden, Pete and Cordaro, Jay and Di Guglielmo, Giuseppe and Duarte, Javier and Gibellini, Stephen and Parekh, Videet and Tran, Honson and Tran, Nhan and {Niu Wenxu} and {Xu Xuesong}},
+  title={{MLPerf Tiny} benchmark},
+  booktitle={Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks},
+  volume={1}, year={2021},
+  url={https://datasets-benchmarks-proceedings.neurips.cc/paper/2021/hash/da4fb5c6e93e74d3df8527599fa62642-Abstract-round1.html}}
+
+@article{sohn1999statistical,
+  author={Sohn, Jongseo and Kim, Nam Soo and Sung, Wonyong},
+  title={A statistical model-based voice activity detection},
+  journal={IEEE Signal Processing Letters},
+  volume={6}, number={1}, pages={1--3}, year={1999}, month=jan,
+  doi={10.1109/97.736233}}
+
+@misc{silerovad2024,
+  author={{Silero Team}},
+  title={Silero {VAD}: pre-trained enterprise-grade Voice Activity Detector ({VAD}), Number Detector and Language Classifier},
+  year={2024}, howpublished={GitHub repository},
+  url={https://github.com/snakers4/silero-vad},
+  note={Software, MIT License; state the version used. Accessed: Oct. 28, 2026}}
+
+@misc{webrtcvad,
+  author={{The WebRTC Project Authors}},
+  title={{WebRTC} voice activity detector (common\_audio/vad)},
+  howpublished={Source code, WebRTC repository},
+  url={https://webrtc.googlesource.com/src/+/refs/heads/main/common_audio/vad/},
+  note={Python binding: J. Wiseman, py-webrtcvad v2.0.10, https://github.com/wiseman/py-webrtcvad. Accessed: Oct. 28, 2026}}
+
+% ---------- Simulation ----------
+@inproceedings{scheibler2018pyroomacoustics,
+  author={Scheibler, Robin and Bezzam, Eric and Dokmani{\'c}, Ivan},
+  title={Pyroomacoustics: A {Python} package for audio room simulation and array processing algorithms},
+  booktitle={2018 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  address={Calgary, AB, Canada}, pages={351--355}, year={2018}, month=apr,
+  doi={10.1109/ICASSP.2018.8461310}}
+
+@article{allen1979image,
+  author={Allen, Jont B. and Berkley, David A.},
+  title={Image method for efficiently simulating small-room acoustics},
+  journal={The Journal of the Acoustical Society of America},
+  volume={65}, number={4}, pages={943--950}, year={1979}, month=apr,
+  doi={10.1121/1.382599}}
+
+% ---------- Robots, games and evaluation ----------
+@inproceedings{trafton2006children,
+  author={Trafton, J. Gregory and Schultz, Alan C. and Perznowski, Dennis and Bugajska, Magdalena D. and Adams, William and Cassimatis, Nicholas L. and Brock, Derek P.},
+  title={Children and robots learning to play hide and seek},
+  booktitle={Proceedings of the 1st ACM SIGCHI/SIGART Conference on Human-Robot Interaction (HRI '06)},
+  address={Salt Lake City, UT, USA}, publisher={ACM},
+  pages={242--249}, year={2006}, month=mar,
+  doi={10.1145/1121241.1121283}}
+
+@incollection{goldhoorn2014analysis,
+  author={Goldhoorn, Alex and Sanfeliu, Alberto and Alqu{\'e}zar, Ren{\'e}},
+  title={Analysis of methods for playing human robot hide-and-seek in a simple real world urban environment},
+  booktitle={{ROBOT2013}: First Iberian Robotics Conference -- Advances in Robotics, Vol. 2},
+  editor={Armada, Manuel A. and Sanfeliu, Alberto and Ferre, Manuel},
+  series={Advances in Intelligent Systems and Computing}, volume={253},
+  publisher={Springer}, address={Cham}, year={2014}, pages={505--520},
+  doi={10.1007/978-3-319-03653-3_37}}
+
+@article{martinoia2013physically,
+  author={Martinoia, Diego and Calandriello, Daniele and Bonarini, Andrea},
+  title={Physically interactive robogames: Definition and design guidelines},
+  journal={Robotics and Autonomous Systems},
+  volume={61}, number={8}, pages={739--748}, year={2013}, month=aug,
+  doi={10.1016/j.robot.2013.04.017}}
+
+@article{bartneck2009measurement,
+  author={Bartneck, Christoph and Kuli{\'c}, Dana and Croft, Elizabeth and Zoghbi, Susana},
+  title={Measurement instruments for the anthropomorphism, animacy, likeability, perceived intelligence, and perceived safety of robots},
+  journal={International Journal of Social Robotics},
+  volume={1}, number={1}, pages={71--81}, year={2009}, month=jan,
+  doi={10.1007/s12369-008-0001-3}}
+
+% ---------- Hardware documentation (vendor, not peer-reviewed) ----------
+@manual{xmos2024xvf3800ug,
+  organization={{XMOS Ltd.}},
+  title={{XMOS XVF3800} -- User Guide},
+  edition={Release 3.2.1}, year={2024}, month=oct,
+  note={Publication date 2024-10-29. The board runs Seeed's USB firmware v2.1.1. Accessed: Oct. 28, 2026},
+  url={https://www.xmos.com/documentation/XM-014888-PC/pdf/xvf3800_user_guide_v3.2.1.pdf}}
+
+@manual{xmos2024xvf3800ds,
+  organization={{XMOS Ltd.}},
+  title={{XMOS XVF3800} -- Datasheet},
+  edition={v3.2.1}, year={2024}, month=oct,
+  note={Last updated 2024-10-29. Accessed: Oct. 28, 2026},
+  url={https://www.xmos.com/documentation/XM-014888-PC/html/doc/datasheet/index.html}}
+
+% ---------- Verified spares ----------
+@inproceedings{ghose2024planning,
+  author={Ghose, Debasmita and Lewkowicz, Michal and Dong, David and Cheng, Andy and Doan, Tran and Adams, Emma and V{\'a}zquez, Marynel and Scassellati, Brian},
+  title={Planning with critical decision points: Robots that influence humans to infer their strategy},
+  booktitle={2024 33rd IEEE International Conference on Robot and Human Interactive Communication (ROMAN)},
+  address={Pasadena, CA, USA}, pages={777--782}, year={2024}, month=aug,
+  doi={10.1109/RO-MAN60168.2024.10731213}}
+
+@inproceedings{michaud2020localization,
+  author={Michaud, Simon and Faucher, Samuel and Grondin, Fran{\c{c}}ois and Lauzon, Jean-Samuel and Labb{\'e}, Mathieu and L{\'e}tourneau, Dominic and Ferland, Fran{\c{c}}ois and Michaud, Fran{\c{c}}ois},
+  title={{3D} localization of a sound source using mobile microphone arrays referenced by {SLAM}},
+  booktitle={2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  pages={10402--10407}, year={2020}, month=oct,
+  doi={10.1109/IROS45743.2020.9341098}}
+
+@article{evers2020locata,
+  author={Evers, Christine and L{\"o}llmann, Heinrich W. and Mellmann, Heinrich and Schmidt, Alexander and Barfuss, Hendrik and Naylor, Patrick A. and Kellermann, Walter},
+  title={The {LOCATA} challenge: Acoustic source localization and tracking},
+  journal={IEEE/ACM Transactions on Audio, Speech, and Language Processing},
+  volume={28}, pages={1620--1643}, year={2020},
+  doi={10.1109/TASLP.2020.2990485}}
+
+@inproceedings{rybakov2020streaming,
+  author={Rybakov, Oleg and Kononenko, Natasha and Subrahmanya, Niranjan and Visontai, Mirk{\'o} and Laurenzo, Stella},
+  title={Streaming keyword spotting on mobile devices},
+  booktitle={Proc. Interspeech 2020}, address={Shanghai, China},
+  pages={2277--2281}, year={2020}, month=oct,
+  doi={10.21437/Interspeech.2020-1003}}

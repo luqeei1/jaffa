@@ -1,0 +1,19 @@
+Session: dirtest_20261028_1921   (real)
+Claps analysed: 24 over 8 directions; distance 1.0 m
+|u| (delay consistency, 1 = perfect): median 0.88
+
+method        mean abs err   median   worst    n  convention
+xcorr                21.1°     5.7°   81.5°   24  our frame
+chip_free            25.0°     4.7°  158.3°   24  mirrored (360 - value)
+chip_doa              2.8°     3.5°    5.0°   24  mirrored (360 - value)
+
+Mean absolute error per direction (deg):
+  true       xcorr   chip_free    chip_doa
+    0°        23.2        30.6         0.7
+   45°         5.4         5.3         4.0
+   90°         4.9         4.6         4.3
+  135°        33.3        13.6         3.0
+  180°        41.6        86.2         0.7
+  225°         3.8         4.2         4.0
+  270°        28.6         0.3         1.0
+  315°        28.0        55.2         5.0
