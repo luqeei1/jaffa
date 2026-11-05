@@ -1,0 +1,211 @@
+<?xml version="1.0"?>
+<robot name="p3at" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Sensor parameters, overridable from the launch file for stress tests -->
+  <xacro:arg name="lidar_rings" default="16"/>
+  <xacro:arg name="lidar_samples" default="1024"/>
+  <xacro:arg name="lidar_vfov" default="30"/>
+  <xacro:arg name="lidar_hz" default="10"/>
+  <xacro:arg name="lidar_range" default="100"/>
+  <xacro:arg name="lidar_noise" default="0.01"/>
+  <xacro:arg name="imu_hz" default="200"/>
+  <xacro:arg name="imu_noise_scale" default="1.0"/>
+
+  <!-- Approximate Pioneer 3-AT geometry (metres, kg) -->
+  <xacro:property name="wheel_r" value="0.111"/>
+  <xacro:property name="wheel_w" value="0.095"/>
+  <xacro:property name="wheel_m" value="1.0"/>
+  <xacro:property name="wheel_x" value="0.134"/>
+  <xacro:property name="wheel_y" value="0.197"/>
+  <!-- Skid-steer slip: in-place turns reach ~0.80 of the rate a 2*wheel_y track predicts
+       (motion_test.py). DiffDrive uses this effective track for commands and odometry, like the
+       real P3-AT firmware's rotation calibration. Re-measure if wheel friction or mass changes. -->
+  <xacro:property name="track_eff" value="${2*wheel_y/0.80}"/>
+  <xacro:property name="body_l" value="0.42"/>
+  <xacro:property name="body_w" value="0.28"/>
+  <xacro:property name="body_h" value="0.18"/>
+  <xacro:property name="body_m" value="10.0"/>
+
+  <link name="base_footprint"/>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0.05"/>
+      <geometry><box size="${body_l} ${body_w} ${body_h}"/></geometry>
+      <material name="red"><color rgba="0.75 0.1 0.1 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.05"/>
+      <geometry><box size="${body_l} ${body_w} ${body_h}"/></geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0.05"/>
+      <mass value="${body_m}"/>
+      <inertia ixx="${body_m/12*(body_w**2+body_h**2)}" ixy="0" ixz="0"
+               iyy="${body_m/12*(body_l**2+body_h**2)}" iyz="0"
+               izz="${body_m/12*(body_l**2+body_w**2)}"/>
+    </inertial>
+  </link>
+
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${wheel_r}"/>
+  </joint>
+
+  <xacro:macro name="wheel" params="name x y">
+    <link name="${name}_wheel">
+      <visual>
+        <origin rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_r}" length="${wheel_w}"/></geometry>
+        <material name="black"><color rgba="0.1 0.1 0.1 1"/></material>
+      </visual>
+      <collision>
+        <origin rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_r}" length="${wheel_w}"/></geometry>
+      </collision>
+      <inertial>
+        <origin rpy="${pi/2} 0 0"/>
+        <mass value="${wheel_m}"/>
+        <inertia ixx="${wheel_m*(3*wheel_r**2+wheel_w**2)/12}" ixy="0" ixz="0"
+                 iyy="${wheel_m*(3*wheel_r**2+wheel_w**2)/12}" iyz="0"
+                 izz="${wheel_m*wheel_r**2/2}"/>
+      </inertial>
+    </link>
+    <joint name="${name}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${name}_wheel"/>
+      <origin xyz="${x} ${y} 0"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+    <gazebo reference="${name}_wheel">
+      <!-- Skid-steer friction. fdir1 pins mu1 to the axle (collision z = cylinder axis), so mu1 is
+           lateral and mu2 longitudinal. Without fdir1 the directions follow a world axis and
+           turning stalls at some headings (robot stuck at 90 deg, see motion_test.py). -->
+      <fdir1>0 0 1</fdir1>
+      <mu1>0.5</mu1>
+      <mu2>1.0</mu2>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:wheel name="front_left"  x="${wheel_x}"  y="${wheel_y}"/>
+  <xacro:wheel name="front_right" x="${wheel_x}"  y="${-wheel_y}"/>
+  <xacro:wheel name="rear_left"   x="${-wheel_x}" y="${wheel_y}"/>
+  <xacro:wheel name="rear_right"  x="${-wheel_x}" y="${-wheel_y}"/>
+
+
+  <!-- 3D lidar (VLP-16-like by default), mounted on top of the chassis -->
+  <link name="lidar_link">
+    <visual>
+      <geometry><cylinder radius="0.05" length="0.07"/></geometry>
+      <material name="grey"><color rgba="0.5 0.5 0.5 1"/></material>
+    </visual>
+    <collision><geometry><cylinder radius="0.05" length="0.07"/></geometry></collision>
+    <inertial>
+      <mass value="0.8"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0.05 0 ${0.05 + body_h/2 + 0.035}"/>
+  </joint>
+
+  <!-- IMU, offset from the lidar so extrinsics are non-trivial -->
+  <link name="imu_link"/>
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="-0.05 0 0.1"/>
+  </joint>
+
+  <xacro:property name="n" value="$(arg imu_noise_scale)"/>
+  <xacro:macro name="imu_axis_noise" params="sd bias">
+    <noise type="gaussian">
+      <mean>0</mean><stddev>${sd*n}</stddev>
+      <bias_mean>${bias*n}</bias_mean><bias_stddev>${bias*n/10}</bias_stddev>
+    </noise>
+  </xacro:macro>
+
+  <gazebo reference="lidar_link">
+    <sensor name="lidar" type="gpu_lidar">
+      <topic>lidar</topic>
+      <ignition_frame_id>lidar_link</ignition_frame_id>
+      <update_rate>$(arg lidar_hz)</update_rate>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>$(arg lidar_samples)</samples>
+            <resolution>1</resolution>
+            <min_angle>${-pi}</min_angle>
+            <max_angle>${pi}</max_angle>
+          </horizontal>
+          <vertical>
+            <samples>$(arg lidar_rings)</samples>
+            <resolution>1</resolution>
+            <min_angle>${-$(arg lidar_vfov)/2*pi/180}</min_angle>
+            <max_angle>${$(arg lidar_vfov)/2*pi/180}</max_angle>
+          </vertical>
+        </scan>
+        <range><min>0.3</min><max>$(arg lidar_range)</max><resolution>0.01</resolution></range>
+        <noise><type>gaussian</type><mean>0</mean><stddev>$(arg lidar_noise)</stddev></noise>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="imu_link">
+    <sensor name="imu" type="imu">
+      <topic>imu</topic>
+      <ignition_frame_id>imu_link</ignition_frame_id>
+      <update_rate>$(arg imu_hz)</update_rate>
+      <always_on>true</always_on>
+      <imu>
+        <angular_velocity>
+          <x><xacro:imu_axis_noise sd="2e-3" bias="1e-4"/></x>
+          <y><xacro:imu_axis_noise sd="2e-3" bias="1e-4"/></y>
+          <z><xacro:imu_axis_noise sd="2e-3" bias="1e-4"/></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><xacro:imu_axis_noise sd="1.7e-2" bias="1e-3"/></x>
+          <y><xacro:imu_axis_noise sd="1.7e-2" bias="1e-3"/></y>
+          <z><xacro:imu_axis_noise sd="1.7e-2" bias="1e-3"/></z>
+        </linear_acceleration>
+      </imu>
+    </sensor>
+  </gazebo>
+
+  <!-- Gazebo Fortress plugins -->
+  <gazebo>
+    <plugin filename="ignition-gazebo-diff-drive-system"
+            name="ignition::gazebo::systems::DiffDrive">
+      <left_joint>front_left_wheel_joint</left_joint>
+      <left_joint>rear_left_wheel_joint</left_joint>
+      <right_joint>front_right_wheel_joint</right_joint>
+      <right_joint>rear_right_wheel_joint</right_joint>
+      <wheel_separation>${track_eff}</wheel_separation>
+      <wheel_radius>${wheel_r}</wheel_radius>
+      <max_linear_acceleration>1.0</max_linear_acceleration>
+      <topic>cmd_vel</topic>
+      <odom_topic>odom</odom_topic>
+      <tf_topic>tf</tf_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_footprint</child_frame_id>
+      <odom_publisher_frequency>30</odom_publisher_frequency>
+    </plugin>
+    <plugin filename="ignition-gazebo-joint-state-publisher-system"
+            name="ignition::gazebo::systems::JointStatePublisher">
+      <topic>joint_states</topic>
+    </plugin>
+    <!-- Ground truth: true pose of base_footprint in the world frame, for evaluation -->
+    <plugin filename="ignition-gazebo-odometry-publisher-system"
+            name="ignition::gazebo::systems::OdometryPublisher">
+      <odom_frame>world</odom_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <odom_topic>ground_truth</odom_topic>
+      <odom_publish_frequency>100</odom_publish_frequency>
+      <dimensions>3</dimensions>
+    </plugin>
+  </gazebo>
+</robot>

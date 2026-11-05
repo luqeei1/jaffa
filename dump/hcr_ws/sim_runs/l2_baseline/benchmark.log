@@ -1,0 +1,239 @@
+=== office_l2  (00:18)
+waiting for sensors...
+driving route 'office' (sim runs slower than real time with software rendering)...
+[INFO] [1793665131.023527736] [route_driver]: route office: 33 waypoints, max_v=0.5
+[INFO] [1793665159.420511811] [route_driver]: waypoint 2/32
+[INFO] [1793665182.193773126] [route_driver]: waypoint 3/32
+[INFO] [1793665208.819897324] [route_driver]: waypoint 4/32
+[INFO] [1793665227.126001389] [route_driver]: waypoint 5/32
+[INFO] [1793665240.507762445] [route_driver]: waypoint 6/32
+[INFO] [1793665249.737151417] [route_driver]: waypoint 7/32
+[INFO] [1793665265.807196725] [route_driver]: waypoint 8/32
+[INFO] [1793665282.009120880] [route_driver]: waypoint 9/32
+[INFO] [1793665302.967669020] [route_driver]: waypoint 10/32
+[INFO] [1793665323.826300104] [route_driver]: waypoint 11/32
+[INFO] [1793665344.992193237] [route_driver]: waypoint 12/32
+[INFO] [1793665369.268512474] [route_driver]: waypoint 13/32
+[INFO] [1793665388.512792282] [route_driver]: waypoint 14/32
+[INFO] [1793665409.868929344] [route_driver]: waypoint 15/32
+[INFO] [1793665427.315587672] [route_driver]: waypoint 16/32
+[INFO] [1793665448.853646498] [route_driver]: waypoint 17/32
+[INFO] [1793665469.942725514] [route_driver]: waypoint 18/32
+[INFO] [1793665490.075128047] [route_driver]: waypoint 19/32
+[INFO] [1793665518.818243445] [route_driver]: waypoint 20/32
+[INFO] [1793665534.846291741] [route_driver]: waypoint 21/32
+[INFO] [1793665547.295671173] [route_driver]: waypoint 22/32
+[INFO] [1793665555.908469961] [route_driver]: waypoint 23/32
+[INFO] [1793665570.454705348] [route_driver]: waypoint 24/32
+[INFO] [1793665586.149086920] [route_driver]: waypoint 25/32
+[INFO] [1793665606.981964100] [route_driver]: waypoint 26/32
+[INFO] [1793665627.679772701] [route_driver]: waypoint 27/32
+[INFO] [1793665646.626226359] [route_driver]: waypoint 28/32
+[INFO] [1793665666.922352105] [route_driver]: waypoint 29/32
+[INFO] [1793665685.159039556] [route_driver]: waypoint 30/32
+[INFO] [1793665704.154733969] [route_driver]: waypoint 31/32
+[INFO] [1793665720.842855334] [route_driver]: waypoint 32/32
+[INFO] [1793665740.240079476] [route_driver]: route complete
+318659 messages, sim span 223.1 s (wall span was 614.8 s) -> /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/bags/office_l2
+saved /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/bags/office_l2
+Duration:          223.147000000s
+Messages:          318659
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 0.2694,
+  "drift_pct": 0.922,
+  "best_offset_s": 0.11
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 5.3293,
+  "drift_pct": 11.706,
+  "best_offset_s": 0.2
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 6.5673,
+  "drift_pct": 14.561,
+  "best_offset_s": -0.2
+building maps...
+=== warehouse_l2  (00:41)
+waiting for sensors...
+driving route 'warehouse' (sim runs slower than real time with software rendering)...
+[INFO] [1793666506.318962087] [route_driver]: route warehouse: 12 waypoints, max_v=0.5
+[INFO] [1793666516.910666773] [route_driver]: waypoint 2/11
+[INFO] [1793666535.395366000] [route_driver]: waypoint 3/11
+[INFO] [1793666582.666095094] [route_driver]: waypoint 4/11
+[INFO] [1793666631.152639650] [route_driver]: waypoint 5/11
+[INFO] [1793666750.979750538] [route_driver]: waypoint 6/11
+[INFO] [1793666800.831257227] [route_driver]: waypoint 7/11
+[INFO] [1793666849.123694984] [route_driver]: waypoint 8/11
+[INFO] [1793666898.137785660] [route_driver]: waypoint 9/11
+[INFO] [1793666919.115004581] [route_driver]: waypoint 10/11
+[INFO] [1793666953.135755609] [route_driver]: waypoint 11/11
+[INFO] [1793666965.262223639] [route_driver]: route complete
+260660 messages, sim span 182.5 s (wall span was 464.8 s) -> /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/bags/warehouse_l2
+saved /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/bags/warehouse_l2
+Duration:          182.518000000s
+Messages:          260660
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 0.1728,
+  "drift_pct": 0.476,
+  "best_offset_s": 0.06
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 6.8204,
+  "drift_pct": 10.245,
+  "best_offset_s": 0.2
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 6.4145,
+  "drift_pct": 12.221,
+  "best_offset_s": -0.2
+building maps...
+=== corridor_l2  (00:59)
+waiting for sensors...
+driving route 'corridor' (sim runs slower than real time with software rendering)...
+[INFO] [1793667593.768117513] [route_driver]: route corridor: 7 waypoints, max_v=0.5
+[INFO] [1793667663.175493101] [route_driver]: waypoint 2/6
+[INFO] [1793667678.405638257] [route_driver]: waypoint 3/6
+[INFO] [1793667698.210282174] [route_driver]: waypoint 4/6
+[INFO] [1793667770.460284697] [route_driver]: waypoint 5/6
+[INFO] [1793667840.536376495] [route_driver]: waypoint 6/6
+[INFO] [1793668050.735640634] [route_driver]: route complete
+290732 messages, sim span 203.6 s (wall span was 462.8 s) -> /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/bags/corridor_l2
+saved /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/bags/corridor_l2
+Duration:          203.557000000s
+Messages:          290732
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 0.1409,
+  "drift_pct": 0.402,
+  "best_offset_s": 0.2
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 12.0512,
+  "drift_pct": 13.162,
+  "best_offset_s": -0.2
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 12.5746,
+  "drift_pct": 2.619,
+  "best_offset_s": 0.2
+building maps...
+=== hall_l2  (01:18)
+waiting for sensors...
+driving route 'hall' (sim runs slower than real time with software rendering)...
+[INFO] [1793668748.732874677] [route_driver]: route hall: 8 waypoints, max_v=0.5
+[INFO] [1793668798.140070418] [route_driver]: waypoint 2/7
+[INFO] [1793668833.910909363] [route_driver]: waypoint 3/7
+[INFO] [1793668934.544926594] [route_driver]: waypoint 4/7
+[INFO] [1793669003.015569893] [route_driver]: waypoint 5/7
+[INFO] [1793669103.305432466] [route_driver]: waypoint 6/7
+[INFO] [1793669146.827879642] [route_driver]: waypoint 7/7
+[INFO] [1793669206.315872546] [route_driver]: route complete
+318691 messages, sim span 223.2 s (wall span was 463.8 s) -> /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/bags/hall_l2
+saved /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/bags/hall_l2
+Duration:          223.198000000s
+Messages:          318691
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 0.2268,
+  "drift_pct": 0.346,
+  "best_offset_s": 0.12
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 10.5291,
+  "drift_pct": 14.127,
+  "best_offset_s": 0.2
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 9.5728,
+  "drift_pct": 21.724,
+  "best_offset_s": -0.2
+building maps...
+=== split_level_l2  (07:32)
+waiting for sensors...
+driving route 'split_level' (sim runs slower than real time with software rendering)...
+[INFO] [1793691184.870194994] [route_driver]: route split_level: 5 waypoints, max_v=0.5
+[INFO] [1793691348.353998096] [route_driver]: waypoint 2/4
+[INFO] [1793691385.889491384] [route_driver]: waypoint 3/4
+[INFO] [1793697633.946805339] [route_driver]: waypoint 4/4
+[INFO] [1793697678.409023947] [route_driver]: route complete
+219546 messages, sim span 153.9 s (wall span was 6499.3 s) -> /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/bags/split_level_l2
+saved /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/bags/split_level_l2
+Duration:          153.896000000s
+Messages:          219546
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 0.339,
+  "drift_pct": 1.299,
+  "best_offset_s": -0.01
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 8.8084,
+  "drift_pct": 21.067,
+  "best_offset_s": 0.18
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+  "ape_rmse": 8.7881,
+  "drift_pct": 21.719,
+  "best_offset_s": -0.14
+building maps...
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+# Benchmark `l2`
+
+Trajectory metrics from `evaluate.py` (APE after SE(3) alignment; drift aligned at the start only).
+Map metrics from `build_map.py --world`: distance of each map point to the true world surface.
+
+## Odometry
+
+| world | method | path [m] | APE RMSE [m] | RPE 1 m [m] | RPE 1 m [deg] | end drift [%] | z RMSE [m] | best offset [s] |
+|---|---|---|---|---|---|---|---|---|
+| corridor | kiss_icp | 94.31 | 12.0512 | 1.1112 | 15.7784 | 13.162 | 0.033 | -0.2 |
+| corridor | kiss_icp_indoor | 93.55 | 12.5746 | 2.6445 | 71.943 | 2.619 | 0.0078 | 0.2 |
+| corridor | wheel_odom | 94.31 | 0.1409 | 0.0305 | 0.1144 | 0.402 | 0.0 | 0.2 |
+| hall | kiss_icp | 103.95 | 10.5291 | 0.9746 | 11.4063 | 14.127 | 0.0389 | 0.2 |
+| hall | kiss_icp_indoor | 104.05 | 9.5728 | 1.6745 | 19.4034 | 21.724 | 0.1337 | -0.2 |
+| hall | wheel_odom | 103.96 | 0.2268 | 0.0214 | 0.1865 | 0.346 | 0.0 | 0.12 |
+| office | kiss_icp | 86.12 | 5.3293 | 1.0856 | 16.5888 | 11.706 | 0.1447 | 0.2 |
+| office | kiss_icp_indoor | 86.12 | 6.5673 | 0.805 | 29.8552 | 14.561 | 0.0336 | -0.2 |
+| office | wheel_odom | 86.15 | 0.2694 | 0.0527 | 0.5077 | 0.922 | 0.0 | 0.11 |
+| split_level | kiss_icp | 72.48 | 8.8084 | 1.0101 | 11.4929 | 21.067 | 0.1652 | 0.18 |
+| split_level | kiss_icp_indoor | 72.48 | 8.7881 | 0.8446 | 12.6227 | 21.719 | 0.5661 | -0.14 |
+| split_level | wheel_odom | 72.52 | 0.339 | 0.0385 | 2.517 | 1.299 | 0.2084 | -0.01 |
+| warehouse | kiss_icp | 79.77 | 6.8204 | 0.9548 | 17.0539 | 10.245 | 0.0387 | 0.2 |
+| warehouse | kiss_icp_indoor | 79.77 | 6.4145 | 0.6706 | 24.893 | 12.221 | 0.077 | -0.2 |
+| warehouse | wheel_odom | 79.78 | 0.1728 | 0.0329 | 0.2787 | 0.476 | 0.0 | 0.06 |
+
+## Map accuracy
+
+| world | method | median [m] | p90 [m] | < 5 cm [%] | < 10 cm [%] |
+|---|---|---|---|---|---|
+| corridor | ground_truth | 0.0116 | 0.0402 | 94.09 | 99.63 |
+| corridor | kiss_icp | 0.9005 | 2.6004 | 5.89 | 10.46 |
+| corridor | kiss_icp_indoor | 0.6729 | 2.2646 | 8.32 | 13.46 |
+| corridor | wheel_odom | 0.0674 | 0.4697 | 44.61 | 57.82 |
+| hall | ground_truth | 0.0168 | 0.0574 | 85.76 | 99.09 |
+| hall | kiss_icp | 1.855 | 4.904 | 6.81 | 10.37 |
+| hall | kiss_icp_indoor | 2.3139 | 6.0745 | 2.89 | 5.39 |
+| hall | wheel_odom | 0.1105 | 0.6401 | 34.36 | 48.58 |
+| office | ground_truth | 0.0116 | 0.0314 | 97.37 | 99.4 |
+| office | kiss_icp | 0.523 | 1.574 | 7.91 | 14.74 |
+| office | kiss_icp_indoor | 0.8495 | 2.3462 | 5.51 | 10.32 |
+| office | wheel_odom | 0.076 | 0.52 | 38.43 | 56.27 |
+| split_level | ground_truth | 0.0131 | 0.0414 | 92.29 | 99.37 |
+| split_level | kiss_icp | 1.0854 | 3.76 | 4.87 | 9.08 |
+| split_level | kiss_icp_indoor | 1.0848 | 3.7683 | 4.51 | 8.48 |
+| split_level | wheel_odom | 0.0536 | 0.6516 | 48.58 | 61.83 |
+| warehouse | ground_truth | 0.0105 | 0.0297 | 96.35 | 99.62 |
+| warehouse | kiss_icp | 0.9382 | 3.1696 | 5.71 | 9.42 |
+| warehouse | kiss_icp_indoor | 0.7359 | 2.5291 | 5.81 | 11.2 |
+| warehouse | wheel_odom | 0.0991 | 0.3938 | 30.96 | 50.32 |
+
+/home/aap123/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+wrote /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/results/paper_l2/table_odometry.tex
+wrote /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/results/paper_l2/fig_metrics.pdf
+wrote /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/results/paper_l2/fig_trajectories.pdf
+wrote /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/results/paper_l2/fig_error_distance.pdf
+wrote /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_baseline/results/paper_l2/fig_map_cdf.pdf

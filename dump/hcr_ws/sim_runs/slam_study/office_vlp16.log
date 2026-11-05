@@ -1,0 +1,86 @@
+wheel_odom      odometry only              APE final 0.269 online 0.269 m  drift 0.93%  loops 0/0  map<5cm 48%  137 ms/kf
+wheel_odom      SC + LM                    APE final 3.174 online 3.790 m  drift 0.59%  loops 90/113  map<5cm 26%  404 ms/kf
+wheel_odom      prox + iSAM2               APE final 0.068 online 0.139 m  drift 0.08%  loops 207/207  map<5cm 67%  413 ms/kf
+wheel_odom      prox + LM                  APE final 0.068 online 0.139 m  drift 0.08%  loops 207/207  map<5cm 67%  428 ms/kf
+wheel_odom      prox+SC + iSAM2 + Cauchy   APE final 0.085 online 0.138 m  drift 0.22%  loops 207/225  map<5cm 64%  538 ms/kf
+wheel_odom      prox+SC + LM               APE final 3.179 online 3.895 m  drift 0.87%  loops 151/186  map<5cm 27%  658 ms/kf
+kiss_icp        odometry only              APE final 0.047 online 0.047 m  drift 0.08%  loops 0/0  map<5cm 64%  120 ms/kf
+wheel_odom      SC + gate + LM             APE final 0.085 online 0.152 m  drift 0.11%  loops 90/90  map<5cm 65%  391 ms/kf
+wheel_odom      prox+SC + gate + iSAM2 + Cauchy APE final 0.083 online 0.140 m  drift 0.18%  loops 207/207  map<5cm 64%  550 ms/kf
+wheel_odom      prox+SC + gate + LM + GNC  APE final 0.068 online 0.139 m  drift 0.08%  loops 207/207  map<5cm 67%  558 ms/kf
+kiss_icp        prox + LM                  APE final 0.048 online 0.052 m  drift 0.10%  loops 208/208  map<5cm 61%  420 ms/kf
+kiss_icp        prox + iSAM2               APE final 0.048 online 0.052 m  drift 0.10%  loops 208/208  map<5cm 61%  412 ms/kf
+wheel_odom      prox+SC + LM + GNC         APE final 0.068 online 0.139 m  drift 0.08%  loops 207/225  map<5cm 67%  986 ms/kf
+kiss_icp        SC + LM                    APE final 3.409 online 4.117 m  drift 4.25%  loops 92/113  map<5cm 20%  454 ms/kf
+kiss_icp        prox+SC + iSAM2 + Cauchy   APE final 0.047 online 0.050 m  drift 0.09%  loops 208/225  map<5cm 64%  473 ms/kf
+kiss_icp        SC + gate + LM             APE final 0.050 online 0.054 m  drift 0.06%  loops 92/92  map<5cm 58%  246 ms/kf
+kiss_icp        prox+SC + LM               APE final 3.342 online 4.482 m  drift 4.92%  loops 163/199  map<5cm 22%  551 ms/kf
+kiss_icp        prox+SC + gate + iSAM2 + Cauchy APE final 0.047 online 0.050 m  drift 0.09%  loops 208/208  map<5cm 64%  321 ms/kf
+kiss_icp        prox+SC + gate + LM + GNC  APE final 0.048 online 0.052 m  drift 0.10%  loops 208/208  map<5cm 61%  301 ms/kf
+rko_lio         odometry only              APE final 0.028 online 0.028 m  drift 0.06%  loops 0/0  map<5cm 53%  121 ms/kf
+kiss_icp        prox+SC + LM + GNC         APE final 0.048 online 0.052 m  drift 0.10%  loops 208/225  map<5cm 61%  658 ms/kf
+rko_lio         prox + LM                  APE final 0.027 online 0.034 m  drift 0.03%  loops 204/204  map<5cm 61%  518 ms/kf
+rko_lio         prox + iSAM2               APE final 0.027 online 0.033 m  drift 0.03%  loops 204/204  map<5cm 61%  548 ms/kf
+rko_lio         SC + LM                    APE final 3.476 online 4.237 m  drift 3.49%  loops 89/109  map<5cm 19%  539 ms/kf
+rko_lio         prox+SC + iSAM2 + Cauchy   APE final 0.028 online 0.030 m  drift 0.05%  loops 204/221  map<5cm 57%  618 ms/kf
+rko_lio         prox+SC + LM               APE final 3.356 online 4.262 m  drift 4.06%  loops 156/194  map<5cm 20%  712 ms/kf
+rko_lio         SC + gate + LM             APE final 0.028 online 0.033 m  drift 0.03%  loops 89/89  map<5cm 60%  501 ms/kf
+kiss_icp_drift  odometry only              APE final 1.349 online 1.349 m  drift 6.39%  loops 0/0  map<5cm 22%  155 ms/kf
+rko_lio         prox+SC + gate + iSAM2 + Cauchy APE final 0.028 online 0.030 m  drift 0.05%  loops 204/204  map<5cm 57%  615 ms/kf
+rko_lio         prox+SC + LM + GNC         APE final 0.027 online 0.034 m  drift 0.03%  loops 204/221  map<5cm 61%  998 ms/kf
+rko_lio         prox+SC + gate + LM + GNC  APE final 0.027 online 0.034 m  drift 0.03%  loops 204/204  map<5cm 61%  629 ms/kf
+kiss_icp_drift  prox + LM                  APE final 0.061 online 0.266 m  drift 0.08%  loops 209/210  map<5cm 52%  558 ms/kf
+kiss_icp_drift  prox + iSAM2               APE final 0.060 online 0.266 m  drift 0.07%  loops 209/210  map<5cm 53%  545 ms/kf
+kiss_icp_drift  SC + LM                    APE final 3.457 online 4.109 m  drift 3.33%  loops 93/115  map<5cm 21%  556 ms/kf
+kiss_icp_drift  SC + gate + LM             APE final 0.063 online 0.280 m  drift 0.03%  loops 93/93  map<5cm 47%  524 ms/kf
+kiss_icp_drift  prox+SC + iSAM2 + Cauchy   APE final 0.104 online 0.586 m  drift 0.44%  loops 196/220  map<5cm 38%  772 ms/kf
+kiss_icp_drift  prox+SC + LM               APE final 3.317 online 4.406 m  drift 3.75%  loops 159/198  map<5cm 23%  890 ms/kf
+kiss_icp_drift  prox+SC + gate + iSAM2 + Cauchy APE final 0.100 online 0.602 m  drift 0.41%  loops 198/199  map<5cm 38%  654 ms/kf
+kiss_icp_drift  prox+SC + gate + LM + GNC  APE final 0.059 online 0.282 m  drift 0.08%  loops 209/210  map<5cm 53%  659 ms/kf
+kiss_icp_drift  prox+SC + LM + GNC         APE final 0.059 online 0.286 m  drift 0.08%  loops 209/228  map<5cm 52%  1161 ms/kf
+| front-end | strategy | APE final [m] | APE online [m] | drift [%] | RPE 1 m [m] | map <5 cm [%] | loops | correct | ms / keyframe |
+|---|---|---|---|---|---|---|---|---|---|
+| Wheel odometry | odometry only | 0.269 | 0.269 | 0.93 | 0.052 | 48 | 0 | 0 | 137 |
+| Wheel odometry | prox + LM | 0.068 | 0.139 | 0.08 | 0.045 | 67 | 207 | 207 | 428 |
+| Wheel odometry | prox + iSAM2 | 0.068 | 0.139 | 0.08 | 0.045 | 67 | 207 | 207 | 413 |
+| Wheel odometry | SC + LM | 3.174 | 3.790 | 0.59 | 0.082 | 26 | 113 | 90 | 404 |
+| Wheel odometry | prox+SC + LM | 3.179 | 3.895 | 0.87 | 0.088 | 27 | 186 | 151 | 658 |
+| Wheel odometry | prox+SC + iSAM2 + Cauchy | 0.085 | 0.138 | 0.22 | 0.051 | 64 | 225 | 207 | 538 |
+| Wheel odometry | prox+SC + LM + GNC | 0.068 | 0.139 | 0.08 | 0.045 | 67 | 225 | 207 | 986 |
+| Wheel odometry | SC + gate + LM | 0.085 | 0.152 | 0.11 | 0.050 | 65 | 90 | 90 | 391 |
+| Wheel odometry | prox+SC + gate + iSAM2 + Cauchy | 0.083 | 0.140 | 0.18 | 0.051 | 64 | 207 | 207 | 550 |
+| Wheel odometry | prox+SC + gate + LM + GNC | 0.068 | 0.139 | 0.08 | 0.045 | 67 | 207 | 207 | 558 |
+| KISS-ICP | odometry only | 0.047 | 0.047 | 0.08 | 0.065 | 64 | 0 | 0 | 120 |
+| KISS-ICP | prox + LM | 0.048 | 0.052 | 0.10 | 0.064 | 61 | 208 | 208 | 420 |
+| KISS-ICP | prox + iSAM2 | 0.048 | 0.052 | 0.10 | 0.064 | 61 | 208 | 208 | 412 |
+| KISS-ICP | SC + LM | 3.409 | 4.117 | 4.25 | 0.715 | 20 | 113 | 92 | 454 |
+| KISS-ICP | prox+SC + LM | 3.342 | 4.482 | 4.92 | 0.755 | 22 | 199 | 163 | 551 |
+| KISS-ICP | prox+SC + iSAM2 + Cauchy | 0.047 | 0.050 | 0.09 | 0.063 | 64 | 225 | 208 | 473 |
+| KISS-ICP | prox+SC + LM + GNC | 0.048 | 0.052 | 0.10 | 0.065 | 61 | 225 | 208 | 658 |
+| KISS-ICP | SC + gate + LM | 0.050 | 0.054 | 0.06 | 0.065 | 58 | 92 | 92 | 246 |
+| KISS-ICP | prox+SC + gate + iSAM2 + Cauchy | 0.047 | 0.050 | 0.09 | 0.063 | 64 | 208 | 208 | 321 |
+| KISS-ICP | prox+SC + gate + LM + GNC | 0.048 | 0.052 | 0.10 | 0.065 | 61 | 208 | 208 | 301 |
+| RKO-LIO | odometry only | 0.028 | 0.028 | 0.06 | 0.019 | 53 | 0 | 0 | 121 |
+| RKO-LIO | prox + LM | 0.027 | 0.034 | 0.03 | 0.018 | 61 | 204 | 204 | 518 |
+| RKO-LIO | prox + iSAM2 | 0.027 | 0.033 | 0.03 | 0.018 | 61 | 204 | 204 | 548 |
+| RKO-LIO | SC + LM | 3.476 | 4.237 | 3.49 | 1.175 | 19 | 109 | 89 | 539 |
+| RKO-LIO | prox+SC + LM | 3.356 | 4.262 | 4.06 | 1.226 | 20 | 194 | 156 | 712 |
+| RKO-LIO | prox+SC + iSAM2 + Cauchy | 0.028 | 0.030 | 0.05 | 0.018 | 57 | 221 | 204 | 618 |
+| RKO-LIO | prox+SC + LM + GNC | 0.027 | 0.034 | 0.03 | 0.018 | 61 | 221 | 204 | 998 |
+| RKO-LIO | SC + gate + LM | 0.028 | 0.033 | 0.03 | 0.019 | 60 | 89 | 89 | 501 |
+| RKO-LIO | prox+SC + gate + iSAM2 + Cauchy | 0.028 | 0.030 | 0.05 | 0.018 | 57 | 204 | 204 | 615 |
+| RKO-LIO | prox+SC + gate + LM + GNC | 0.027 | 0.034 | 0.03 | 0.018 | 61 | 204 | 204 | 629 |
+| KISS-ICP + drift (synthetic) | odometry only | 1.349 | 1.349 | 6.39 | 0.063 | 22 | 0 | 0 | 155 |
+| KISS-ICP + drift (synthetic) | prox + LM | 0.061 | 0.266 | 0.08 | 0.066 | 52 | 210 | 209 | 558 |
+| KISS-ICP + drift (synthetic) | prox + iSAM2 | 0.060 | 0.266 | 0.07 | 0.066 | 53 | 210 | 209 | 545 |
+| KISS-ICP + drift (synthetic) | SC + LM | 3.457 | 4.109 | 3.33 | 0.722 | 21 | 115 | 93 | 556 |
+| KISS-ICP + drift (synthetic) | prox+SC + LM | 3.317 | 4.406 | 3.75 | 0.762 | 23 | 198 | 159 | 890 |
+| KISS-ICP + drift (synthetic) | prox+SC + iSAM2 + Cauchy | 0.104 | 0.586 | 0.44 | 0.063 | 38 | 220 | 196 | 772 |
+| KISS-ICP + drift (synthetic) | prox+SC + LM + GNC | 0.059 | 0.286 | 0.08 | 0.068 | 52 | 228 | 209 | 1161 |
+| KISS-ICP + drift (synthetic) | SC + gate + LM | 0.063 | 0.280 | 0.03 | 0.064 | 47 | 93 | 93 | 524 |
+| KISS-ICP + drift (synthetic) | prox+SC + gate + iSAM2 + Cauchy | 0.100 | 0.602 | 0.41 | 0.063 | 38 | 199 | 198 | 654 |
+| KISS-ICP + drift (synthetic) | prox+SC + gate + LM + GNC | 0.059 | 0.282 | 0.08 | 0.068 | 53 | 210 | 209 | 659 |
+wrote /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/slam_study/office_vlp16/fig_slam_ape.pdf
+wrote /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/slam_study/office_vlp16/fig_slam_traj.pdf
+wrote /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/slam_study/office_vlp16/fig_slam_error.pdf
+main=0

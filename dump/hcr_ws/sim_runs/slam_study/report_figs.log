@@ -1,0 +1,18 @@
+wrote office_vlp16/fig_pipeline.pdf
+wrote office_vlp16/fig_heatmap.pdf
+wrote office_vlp16/fig_loops.pdf
+wrote office_vlp16/fig_robustness.pdf
+wrote office_vlp16/fig_runtime.pdf
+| Loops | Gate | Solver | Robust | APE final [m]: Wheel odom. / KISS-ICP / RKO-LIO / KISS-ICP + drift | APE online [m]: Wheel odom. / KISS-ICP / RKO-LIO / KISS-ICP + drift | Loop precision [%] | Map <5 cm [%] | ms / kf | APE with 20 false loops [m]: KISS-ICP / + drift |
+|---|---|---|---|---|---|---|---|---|---|
+| -- | -- | -- | -- | 0.269 / **0.047** / 0.028 / 1.35 | 0.269 / **0.047** / **0.028** / 1.35 | – | 46 | **133** | – / – |
+| Prox | no | LM | none | **0.068** / 0.048 / **0.027** / 0.061 | 0.139 / 0.052 / 0.034 / **0.266** | 100 | 60 | 481 | – / – |
+| Prox | no | iSAM2 | none | **0.068** / 0.048 / **0.027** / 0.060 | 0.139 / 0.052 / 0.033 / **0.266** | 100 | 61 | 480 | – / – |
+| SC | no | LM | none | 3.17 / 3.41 / 3.48 / 3.46 | 3.79 / 4.12 / 4.24 / 4.11 | 81 | 22 | 488 | – / – |
+| Prox+SC | no | LM | none | 3.18 / 3.34 / 3.36 / 3.32 | 3.89 / 4.48 / 4.26 / 4.41 | 81 | 23 | 703 | 3.11 / 3.25 |
+| Prox+SC | no | iSAM2 | Cauchy | 0.085 / **0.047** / 0.028 / 0.104 | **0.138** / 0.050 / 0.030 / 0.586 | 91 | 56 | 600 | **0.048** / 0.120 |
+| Prox+SC | no | LM | GNC | **0.068** / 0.048 / **0.027** / **0.059** | 0.139 / 0.052 / 0.034 / 0.286 | 92 | 60 | 951 | **0.048** / **0.059** |
+| SC | yes | LM | none | 0.085 / 0.050 / 0.028 / 0.063 | 0.152 / 0.054 / 0.033 / 0.280 | **100** | 58 | 415 | – / – |
+| Prox+SC | yes | iSAM2 | Cauchy | 0.083 / **0.047** / **0.028** / 0.100 | 0.140 / 0.050 / 0.030 / 0.602 | 100 | 56 | 535 | – / – |
+| Prox+SC ★ | yes | LM | GNC | **0.068** / 0.048 / **0.027** / **0.059** | 0.139 / 0.052 / 0.034 / 0.282 | 100 | **61** | 537 | **0.048** / **0.059** |
+wrote office_vlp16/fig_maps.pdf

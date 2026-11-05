@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>p3at_real</name>
+  <version>0.1.0</version>
+  <description>Bring-up for the real Pioneer 3-AT over serial (p2os2 driver)</description>
+  <maintainer email="you@example.com">you</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>p2os_driver</exec_depend>
+  <exec_depend>p2os_msgs</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>rosbag2_py</exec_depend>
+  <exec_depend>python3-matplotlib</exec_depend>
+  <exec_depend>rko_lio</exec_depend>
+  <exec_depend>rtabmap_slam</exec_depend>
+  <exec_depend>rtabmap_util</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>python3-tk</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

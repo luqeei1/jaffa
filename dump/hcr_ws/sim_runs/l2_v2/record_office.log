@@ -1,0 +1,39 @@
+waiting for sensors...
+driving route 'office' (sim runs slower than real time with software rendering)...
+[INFO] [1793790021.823478021] [route_driver]: route office: 33 waypoints, max_v=0.5
+[INFO] [1793790269.675285058] [route_driver]: waypoint 2/32
+[INFO] [1793790297.155763949] [route_driver]: waypoint 3/32
+[INFO] [1793790330.817331671] [route_driver]: waypoint 4/32
+[INFO] [1793790353.432009339] [route_driver]: waypoint 5/32
+[INFO] [1793790367.626059664] [route_driver]: waypoint 6/32
+[INFO] [1793790377.132378189] [route_driver]: waypoint 7/32
+[INFO] [1793790392.872399869] [route_driver]: waypoint 8/32
+[INFO] [1793790409.132909659] [route_driver]: waypoint 9/32
+[INFO] [1793790427.679259379] [route_driver]: waypoint 10/32
+[INFO] [1793790451.959251939] [route_driver]: waypoint 11/32
+[INFO] [1793790475.141423753] [route_driver]: waypoint 12/32
+[INFO] [1793790500.287777674] [route_driver]: waypoint 13/32
+[INFO] [1793790524.804069413] [route_driver]: waypoint 14/32
+[INFO] [1793790550.421386630] [route_driver]: waypoint 15/32
+[INFO] [1793790572.620549923] [route_driver]: waypoint 16/32
+[INFO] [1793790596.945118293] [route_driver]: waypoint 17/32
+[INFO] [1793790621.335062043] [route_driver]: waypoint 18/32
+[INFO] [1793790647.192641944] [route_driver]: waypoint 19/32
+[INFO] [1793790677.928987057] [route_driver]: waypoint 20/32
+[INFO] [1793790698.869111076] [route_driver]: waypoint 21/32
+[INFO] [1793790713.536552975] [route_driver]: waypoint 22/32
+[INFO] [1793790723.936080869] [route_driver]: waypoint 23/32
+[INFO] [1793790742.011320807] [route_driver]: waypoint 24/32
+[INFO] [1793790760.668795898] [route_driver]: waypoint 25/32
+[INFO] [1793790784.899160695] [route_driver]: waypoint 26/32
+[INFO] [1793790807.911292501] [route_driver]: waypoint 27/32
+[INFO] [1793790831.265146152] [route_driver]: waypoint 28/32
+[INFO] [1793790856.407014447] [route_driver]: waypoint 29/32
+[INFO] [1793790876.930331691] [route_driver]: waypoint 30/32
+[INFO] [1793790897.554268081] [route_driver]: waypoint 31/32
+[INFO] [1793790915.661699990] [route_driver]: waypoint 32/32
+[INFO] [1793790935.901460834] [route_driver]: route complete
+318793 messages, sim span 223.0 s (wall span was 920.8 s) -> /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_v2/bags/office_l2
+saved /home/aap123/Documents/Imperial/hcr/hcr_ws/sim_runs/l2_v2/bags/office_l2
+Duration:          222.962000000s
+Messages:          318793

@@ -1,0 +1,22 @@
+# RKO-LIO (lidar + IMU odometry) for the Unitree L2 on the P3-AT, indoors.
+# Extrinsics come from TF (lidar.launch.py). The frames are named explicitly: left empty, RKO-LIO reads them
+# from the first messages, and after a reset it looked up "" forever (2026-11-04).
+/**:
+  ros__parameters:
+    lidar_topic: /unilidar/cloud
+    imu_topic: /unilidar/imu
+    lidar_frame: unilidar_lidar
+    imu_frame: unilidar_imu
+    base_frame: base_link
+    odom_frame: odom
+    odom_topic: /rko_lio/odom
+    deskew: true
+    voxel_size: 0.3        # default 1.0 is for outdoor; rooms here are < 30 m
+    max_range: 30.0        # L2 spec range
+    min_range: 0.4         # drop returns from the robot's own body
+    initialization_phase: true  # estimate IMU bias from the first frames: start at rest
+    reset_on_registration_error: true  # failed scan match: reset odometry instead of crashing (2026-11-04)
+    lidar_timestamps:
+      force_relative: true # L2 per-point `time` is seconds since the cloud stamp
+    publish_deskewed_scan: false
+    publish_local_map: false

@@ -1,0 +1,12 @@
+# KISS-ICP (lidar-only odometry) for the Unitree L2 on the P3-AT, indoors.
+kiss_icp_node:
+  ros__parameters:
+    data:
+      deskew: True      # uses the L2's per-point `time` field
+      max_range: 30.0   # -> voxel_size 0.3 m (max_range / 100)
+      min_range: 0.4    # drop returns from the robot's own body
+    mapping:
+      max_points_per_voxel: 20
+    adaptive_threshold:
+      initial_threshold: 2.0
+      min_motion_th: 0.1

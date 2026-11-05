@@ -1,0 +1,35 @@
+kiss_icp        5 false: iSAM2+Cauchy      APE final 0.047 online 0.050 m  drift 0.09%  loops 208/230  map<5cm 63%  517 ms/kf
+kiss_icp        20 false: iSAM2+Cauchy     APE final 0.048 online 0.050 m  drift 0.09%  loops 208/245  map<5cm 63%  518 ms/kf
+kiss_icp        5 false: LM                APE final 3.139 online 5.206 m  drift 4.80%  loops 159/204  map<5cm 21%  678 ms/kf
+kiss_icp        20 false: LM               APE final 3.106 online 4.338 m  drift 6.22%  loops 162/207  map<5cm 19%  703 ms/kf
+kiss_icp        5 false: gate+LM+GNC       APE final 0.048 online 0.052 m  drift 0.10%  loops 208/213  map<5cm 61%  736 ms/kf
+kiss_icp        5 false: LM+GNC            APE final 0.048 online 0.052 m  drift 0.10%  loops 208/230  map<5cm 61%  931 ms/kf
+kiss_icp        20 false: gate+LM+GNC      APE final 0.048 online 0.052 m  drift 0.10%  loops 208/228  map<5cm 61%  882 ms/kf
+kiss_icp_drift  5 false: iSAM2+Cauchy      APE final 0.104 online 0.586 m  drift 0.44%  loops 196/225  map<5cm 37%  725 ms/kf
+kiss_icp_drift  5 false: LM                APE final 3.202 online 5.006 m  drift 3.86%  loops 162/204  map<5cm 21%  835 ms/kf
+kiss_icp        20 false: LM+GNC           APE final 0.048 online 0.052 m  drift 0.10%  loops 208/245  map<5cm 61%  1094 ms/kf
+kiss_icp_drift  5 false: gate+LM+GNC       APE final 0.059 online 0.286 m  drift 0.08%  loops 209/215  map<5cm 52%  881 ms/kf
+kiss_icp_drift  5 false: LM+GNC            APE final 0.059 online 0.286 m  drift 0.08%  loops 209/233  map<5cm 52%  1134 ms/kf
+kiss_icp_drift  20 false: iSAM2+Cauchy     APE final 0.120 online 0.628 m  drift 0.56%  loops 179/222  map<5cm 35%  596 ms/kf
+kiss_icp_drift  20 false: LM               APE final 3.250 online 3.744 m  drift 4.80%  loops 166/214  map<5cm 20%  685 ms/kf
+kiss_icp_drift  20 false: gate+LM+GNC      APE final 0.059 online 0.286 m  drift 0.08%  loops 209/230  map<5cm 52%  732 ms/kf
+kiss_icp_drift  20 false: LM+GNC           APE final 0.059 online 0.286 m  drift 0.08%  loops 209/248  map<5cm 52%  952 ms/kf
+| front-end | test | APE final [m] | APE online [m] | drift [%] | loops (correct/total) |
+|---|---|---|---|---|---|
+| KISS-ICP | 5 false: LM | 3.139 | 5.206 | 4.80 | 159/204 |
+| KISS-ICP | 5 false: iSAM2+Cauchy | 0.047 | 0.050 | 0.09 | 208/230 |
+| KISS-ICP | 5 false: LM+GNC | 0.048 | 0.052 | 0.10 | 208/230 |
+| KISS-ICP | 5 false: gate+LM+GNC | 0.048 | 0.052 | 0.10 | 208/213 |
+| KISS-ICP | 20 false: LM | 3.106 | 4.338 | 6.22 | 162/207 |
+| KISS-ICP | 20 false: iSAM2+Cauchy | 0.048 | 0.050 | 0.09 | 208/245 |
+| KISS-ICP | 20 false: LM+GNC | 0.048 | 0.052 | 0.10 | 208/245 |
+| KISS-ICP | 20 false: gate+LM+GNC | 0.048 | 0.052 | 0.10 | 208/228 |
+| KISS-ICP + drift (synthetic) | 5 false: LM | 3.202 | 5.006 | 3.86 | 162/204 |
+| KISS-ICP + drift (synthetic) | 5 false: iSAM2+Cauchy | 0.104 | 0.586 | 0.44 | 196/225 |
+| KISS-ICP + drift (synthetic) | 5 false: LM+GNC | 0.059 | 0.286 | 0.08 | 209/233 |
+| KISS-ICP + drift (synthetic) | 5 false: gate+LM+GNC | 0.059 | 0.286 | 0.08 | 209/215 |
+| KISS-ICP + drift (synthetic) | 20 false: LM | 3.250 | 3.744 | 4.80 | 166/214 |
+| KISS-ICP + drift (synthetic) | 20 false: iSAM2+Cauchy | 0.120 | 0.628 | 0.56 | 179/222 |
+| KISS-ICP + drift (synthetic) | 20 false: LM+GNC | 0.059 | 0.286 | 0.08 | 209/248 |
+| KISS-ICP + drift (synthetic) | 20 false: gate+LM+GNC | 0.059 | 0.286 | 0.08 | 209/230 |
+aliasing=0

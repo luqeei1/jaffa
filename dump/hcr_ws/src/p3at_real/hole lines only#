@@ -1,0 +1,1 @@
+  awk '/ UDP, length [0-9]+$/ {sub(":", "", $5); print $3, "->", $5, $NF " B"}'   | sort | uniq -c | sort -rn | tee /tmp/l2_traffic.txt

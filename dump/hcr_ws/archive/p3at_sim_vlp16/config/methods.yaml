@@ -1,0 +1,35 @@
+# Odometry / SLAM methods that run_method.sh can replay a dataset bag into.
+#   launch: command started before playback (use_sim_time on; input /points, /imu)
+#   odom:   nav_msgs/Odometry topic holding the estimate (scored against /ground_truth)
+#   time_offset: seconds added to estimate stamps so they mean the pose's real time (default 0).
+#           /points is stamped at sweep START; a method that de-skews to sweep END needs the
+#           scan period (0.1 s). evaluate.py reports best_offset_s (~0 when this is right).
+# Estimates should be of base_footprint, or evaluate.py's alignment absorbs the offset only
+# for a constant extrinsic, so prefer setting the method's base frame to base_footprint.
+
+wheel_odom:   # baseline: the DiffDrive plugin's ideal wheel odometry, already in the bag
+  launch: ""
+  odom: /odom
+
+kiss_icp:     # lidar-only (no IMU), with de-skew from the per-point time field
+  launch: >-
+    ros2 launch kiss_icp odometry.launch.py topic:=/points use_sim_time:=true
+    base_frame:=base_footprint visualize:=false publish_odom_tf:=false
+  odom: /kiss/odometry
+  time_offset: 0.1  # de-skews to sweep end: Preprocessing.cpp uses exp((t_norm - 1) * omega)
+
+kiss_icp_indoor:  # same, with config/kiss_icp_indoor.yaml (0.3 m voxels instead of 1 m)
+  launch: >-
+    ros2 launch kiss_icp odometry.launch.py topic:=/points use_sim_time:=true
+    base_frame:=base_footprint visualize:=false publish_odom_tf:=false
+    config_file:=$(ros2 pkg prefix p3at_sim)/share/p3at_sim/config/kiss_icp_indoor.yaml
+  odom: /kiss/odometry
+  time_offset: 0.1
+
+# Planned. Commands are untested until the packages are installed:
+# rko_lio:     # apt: ros-humble-rko-lio (lidar-inertial)
+#   launch: ros2 launch rko_lio odometry.launch.py lidar_topic:=/points imu_topic:=/imu base_frame:=base_footprint use_sim_time:=true
+#   odom: /rko_lio/odometry
+# fast_lio:    # source: hku-mars/FAST_LIO (ROS2 branch), config with lidar_type velodyne, scan_line 16
+# lio_sam:     # source: TixiaoShan/LIO-SAM (ros2 branch) + ros-humble-gtsam, GTSAM loop closure back-end
+# glim:        # koide3/glim PPA, GPU-free CPU build, has global optimisation back-end
