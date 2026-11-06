@@ -2,7 +2,7 @@
 
 Marco's ears and voice: a ReSpeaker XVF3800 4-mic USB array used for sound
 direction finding, "Marco"/"Polo" keyword spotting and voice playback.
-This folder will become the audio part of the group GitHub repo.
+This folder is the audio part of the group repo.
 
 ## Folder layout
 
@@ -22,7 +22,10 @@ marco_audio/
 │   ├── analyse_directions.py  error per method and direction -> results.csv, plot
 │   ├── make_angle_guide.py rebuilds angle_guide.pdf
 │   ├── doa_phat.py         GCC-PHAT, robust least-squares fit, SRP-PHAT, SoundEvent fields
-│   └── test_doa_phat.py    self-tests for doa_phat.py (ideal delays, no hardware)
+│   ├── test_doa_phat.py    self-tests for doa_phat.py (ideal delays, no hardware)
+│   ├── analyse_phat_session.py  all methods on a measure_directions session -> results_phat.csv
+│   ├── live_doa.py         live direction finder: every method + chip, saves each run, --replay
+│   └── export_clips.py     small clips.npz of a run's sounds, to share or send for checking
 ├── sim/                    room simulation (pyroomacoustics) to compare the methods
 │   ├── benchmark.py        all methods x 4 reverberation times x 24 directions x 1/2 m
 │   ├── tune.py             analysis window length and PHAT strength
@@ -169,11 +172,16 @@ spot: what matters is the sound's direction relative to the board.
 4. Dry run without hardware: `python measure_directions.py --simulate`
 5. Real run:
    ```powershell
-   python measure_directions.py --device 15 --distance 1.0
+   python measure_directions.py --device <index> --distance 1.0
    python analyse_directions.py ..\recordings\<session folder it prints>
    ```
    For each angle: turn the board, press Enter, clap 3 times about a second
    apart, at board height, same spot every time. It checks it heard 3 claps.
+   `<index>` is the WASAPI line marked OK in `check_device.py`. It can change when
+   other sound devices are plugged in or out (15 until 5 Nov, then 14).
+   Tape the clap spot exactly on the 0° line: a spot a few cm to one side shifts
+   every angle the same way (about −3.7° on 28 Oct). `live_doa.py --guide`
+   (section 8) runs the same test live.
 
 Output in the session folder: `results.csv` (one row per clap),
 `summary.txt` and `direction_test.png`.
@@ -201,18 +209,57 @@ are the peaks strong). Check it works:
 python tools\test_doa_phat.py        # should end with ALL PASSED
 ```
 
-Use it on a recording (raw mics are channels 2-5; a window from 5 ms before to 30 ms after
-the onset works best, because echoes arrive after the direct sound):
+Use it on a recording (raw mics are channels 2-5). Cut a window from 5 ms before to 2 ms
+after the onset: echoes arrive after the direct sound, and one from a nearby wall arrives
+within about 2 ms (section 8). `analyse_phat_session.py` still defaults to 30 ms, so add
+`--post-ms 2` to it.
 
 ```python
 import numpy as np, doa_phat as dp
-seg = x[onset - 80 : onset + 480, 2:6]
+seg = x[onset - 80 : onset + 32, 2:6]      # 5 ms before to 2 ms after, at 16 kHz
 r = dp.localise(seg)
 print(np.degrees(r["gcc_phat"]["azimuth_rad"]), r["gcc_phat"]["confidence"])
 print(np.degrees(r["srp_phat"]["azimuth_rad"]), r["srp_phat"]["confidence"])
 ```
 
-## 8. Room simulation (`sim/`)
+## 8. Live direction finder (`live_doa.py`)
+
+`live_doa.py` listens to the board all the time. For every clap or shout it prints the
+direction from each method (GCC-PHAT, GCC-PHAT robust, SRP-PHAT, plain cross-correlation)
+next to the chip's two estimates, with each method's confidence. It calls the same functions
+as the offline scripts and saves the whole run, so the run can be replayed later without the
+board and give identical answers.
+
+```powershell
+python check_device.py                    # note the device number: it can change
+python live_doa.py --device <index> --guide --distance 1.0 --min-db -60 --note "room, setup"
+python live_doa.py --replay ..\recordings\<run folder>                # same answers, no board
+python live_doa.py --replay ..\recordings\<run folder> --post-ms 30   # try another window
+python export_clips.py ..\recordings\<run folder>                     # small clips.npz to share
+```
+
+Guided mode (`--guide`) walks through the 8 angles of section 6: turn the board, press Enter,
+wait for "Clap now", clap 3 times. Type `r` to redo an angle, `x` to stop labelling and `q`
+to save and quit. `--min-db -60` ignores anything quieter than −60 dBFS, which suits claps at
+1 m; leave it out for quieter or more distant sounds.
+
+Each run is saved in `recordings\live_<date>_<time>\`: `audio.npy` (the whole run, about
+23 MB a minute, kept out of git by the root `.gitignore`), `events.csv` (one row per sound),
+`summary.txt`, `labels.csv`, `chip.csv` and `session.json`.
+
+**Why the window ends 2 ms after the onset (5 Nov 2026).** In the live test
+`recordings/live_20261105_2114` (24 claps, 8 directions, 1 m) the board stood about 30 cm in
+front of a wall, on the far side from the clapper. The wall's echo arrived about
+0.6 m ÷ 343 m/s ≈ 1.75 ms after the direct sound. With the old window (5 ms before to 30 ms
+after the onset), GCC-PHAT was more than 10° off on 9 of 24 claps, the worst by 110°. With the
+window ending 2 ms after the onset: median 1.0°, worst 4.4°, none over 10°. Across all three
+clap sessions (72 claps), windows ending 1.5 to 2 ms after the onset did about equally well,
+and 2.5 ms or more got worse next to the wall. On the 24 and 28 Oct sessions the change moved
+the GCC-PHAT median by only 0.2°. The run's folder keeps every clap (`clips.npz`) and both
+replays (`summary_replay.txt` with the old window, `summary_replay_5-2ms.txt` with the new
+one); its full `audio.npy` is too big for GitHub.
+
+## 9. Room simulation (`sim/`)
 
 Simulated rooms show how each method copes with echoes before testing in real rooms.
 `pyroomacoustics` [3] models each wall reflection as a mirror-image copy of the source [4].
@@ -236,6 +283,8 @@ mismatch, the board's case and table reflections, so real recordings decide.
 | Raw channels (ch2–ch5) silent | Same as above (known Windows issue with the 6-ch firmware) |
 | No sound device after Zadig | Zadig replaced the audio driver: uninstall in Device Manager, replug |
 | `CLIPPED` in record.py | Clap further away, or more softly |
+| `Invalid number of channels` when a script opens the board | The device number changed: run `check_device.py` and use the WASAPI line marked OK |
+| Many low-confidence answers near a wall, some pointing backwards | A strong echo inside the window: keep the window ending 2 ms after the onset (default in `live_doa.py`; `--post-ms 2` for `analyse_phat_session.py`), or move the board away from the wall |
 | Angle wrong but `|u|` ≈ 1 | Mic order/orientation wrong: do the tap test |
 | `|u|` far from 1, delays marked "impossible" | Bad recording (echo, clipping, wrong channels) |
 
