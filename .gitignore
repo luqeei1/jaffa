@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+
+marco_audio/recordings/live_*/audio.npy
+marco_audio/recordings/live_*/audio_f32_6ch.raw
