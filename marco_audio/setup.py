@@ -21,6 +21,8 @@ setup(
         ("share/" + package_name + "/tools", ["tools/" + f for f in TOOLS]),
         # Marco's voice clips, one .wav file per thing he can say.
         ("share/" + package_name + "/clips", sorted(glob("clips/*.wav"))),
+        # Launch files: "ros2 launch marco_audio <file name>" looks for them here.
+        ("share/" + package_name + "/launch", sorted(glob("launch/*.launch.py"))),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
