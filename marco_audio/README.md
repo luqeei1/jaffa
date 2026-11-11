@@ -4,6 +4,11 @@ Marco's ears and voice: a ReSpeaker XVF3800 4-mic USB array used for sound
 direction finding, "Marco"/"Polo" keyword spotting and voice playback.
 This folder is the audio part of the group repo.
 
+It is two things at once: a set of stand-alone Python scripts for recording and testing
+(sections 1 to 9, Windows, no ROS), and a ROS 2 Humble package that runs the same code on the
+robot (sections 10 to 12). **To run it on the robot's Jetson, follow
+[`docs/JETSON_RUNSHEET.md`](docs/JETSON_RUNSHEET.md).**
+
 ## Folder layout
 
 ```
@@ -11,6 +16,14 @@ marco_audio/
 ├── README.md
 ├── requirements.txt
 ├── requirements-sim.txt  extra package for sim/ only
+├── package.xml, setup.py, setup.cfg, resource/   make this folder a ROS 2 package (section 10)
+├── marco_audio/            the ROS 2 nodes
+│   ├── audio_node.py       Marco's ears: publishes one SoundEvent message per sound
+│   └── speech_node.py      Marco's voice: plays a clip when asked
+├── launch/
+│   └── marco_audio.launch.py  starts both nodes and the board's transform (section 11)
+├── clips/                  the voice clips speech_node plays (placeholder beeps for now)
+├── test/                   checks for the nodes and the launch file, no ROS needed
 ├── tools/                  stand-alone scripts, no ROS needed
 │   ├── mic_array.py        shared constants: sample rate, channel map, mic positions
 │   ├── check_device.py     finds the board, checks 6 ch @ 16 kHz can be opened
@@ -25,7 +38,8 @@ marco_audio/
 │   ├── test_doa_phat.py    self-tests for doa_phat.py (ideal delays, no hardware)
 │   ├── analyse_phat_session.py  all methods on a measure_directions session -> results_phat.csv
 │   ├── live_doa.py         live direction finder: every method + chip, saves each run, --replay
-│   └── export_clips.py     small clips.npz of a run's sounds, to share or send for checking
+│   ├── export_clips.py     small clips.npz of a run's sounds, to share or send for checking
+│   └── make_placeholder_clips.py  rebuilds the four placeholder clips in clips/
 ├── sim/                    room simulation (pyroomacoustics) to compare the methods
 │   ├── benchmark.py        all methods x 4 reverberation times x 24 directions x 1/2 m
 │   ├── tune.py             analysis window length and PHAT strength
@@ -35,9 +49,13 @@ marco_audio/
 │   ├── plot_benchmark.py   error vs reverberation figure
 │   ├── plot_style.py       shared figure style, one colour per method
 │   └── out/                results (.csv, .txt) and figures (.png)
-├── docs/references.bib     checked references (BibTeX) for the reports
+├── docs/
+│   ├── JETSON_RUNSHEET.md  step by step on the robot's Jetson, and the interface for other nodes
+│   └── references.bib      checked references (BibTeX) for the reports
 ├── angle_guide.pdf         print at 100%: put the board on it for the direction test
 └── recordings/             saved audio and plots (sim_clap_60_analysis.png = expected result)
+
+../marco_audio_msgs/        the SoundEvent message type, a small ROS 2 package of its own
 ```
 
 ## 1. Python setup (Windows)
@@ -275,6 +293,92 @@ error on ringing claps in echoey rooms; GCC-PHAT and SRP-PHAT never exceeded 5.1
 click-like sounds all methods are within a few degrees. The simulation leaves out mic
 mismatch, the board's case and table reflections, so real recordings decide.
 
+## 10. ROS 2 nodes (`audio_node`, `speech_node`)
+
+ROS 2 is the software the robot's parts use to talk to each other. A **node** is one running
+program, a **topic** is a named channel, and a **message** is one item sent on a topic with fixed
+fields. This folder is a ROS 2 Humble package with two nodes:
+
+- **`audio_node`** (Marco's ears) listens to the board and publishes one `SoundEvent` message per
+  sound on `/marco/audio/sound_event`: the direction (`azimuth`, radians), its uncertainty, a
+  confidence from 0 to 1 and the loudness. It imports the `Listener` class from
+  `tools/live_doa.py`, so a sound gets the same answer here as in the live clap test (section 8).
+  With `source:=replay` it plays a saved run through the same code instead of the microphone.
+- **`speech_node`** (Marco's voice) plays `clips/<name>.wav` through the board when a name arrives
+  on `/marco/speech/say`, and publishes `true` on `/marco/speech/active` while it plays.
+  `audio_node` ignores sounds that start while that is true, so Marco does not report his own
+  voice. The four clips are placeholder beeps until the real voice is recorded.
+- The message type is a package of its own, `../marco_audio_msgs` (`msg/SoundEvent.msg`).
+
+Build it on Ubuntu 22.04 with ROS 2 Humble (the robot's Jetson, or WSL2 on a Windows laptop):
+
+```bash
+sudo apt-get install -y --no-upgrade python3-numpy python3-scipy python3-matplotlib
+mkdir -p ~/marco_ws/src && cd ~/marco_ws/src
+git clone https://github.com/luqeei1/jaffa.git
+cd ~/marco_ws
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install
+source install/setup.bash          # again in every new terminal
+```
+
+`--symlink-install` makes the build point at these source files instead of copying them, so an
+edit takes effect without rebuilding and `audio_node` can find a run in `recordings/` by its name.
+
+Run them, each in its own terminal:
+
+```bash
+ros2 run marco_audio audio_node --ros-args -p source:=replay -p replay_path:=dirtest_20261028_1921
+ros2 topic echo /marco/audio/sound_event            # every message as it is published
+ros2 run marco_audio speech_node
+ros2 topic pub --once /marco/speech/say std_msgs/msg/String "{data: marco}"
+```
+
+The replay prints one line per clap. The first three are always −3.8°, −3.9° and −2.1°.
+Leave out everything after `audio_node` to use the live microphone. That also needs PortAudio
+and the `sounddevice` library (run sheet, section 10), and it needs Linux to see the board: the
+Jetson does, WSL does not, so on a laptop use replay. Each node lists its parameters at the top
+of its file.
+
+Checks that need no ROS 2 and no board (stand-in ROS modules in `test/`), from this folder:
+
+```bash
+python test/test_audio_node.py     # 28 checks: replay publishes exactly what live_doa.py finds
+python test/test_speech_node.py    # 22 checks: queueing, the speaking flag, a player that fails
+python test/test_launch_file.py    # 39 checks: what the launch file starts, and with what settings
+```
+
+## 11. Launch file
+
+`launch/marco_audio.launch.py` starts both nodes with one command. It also publishes where the
+board sits on the robot, as a static transform `base_link -> mic_array_link`: without it the
+angle in a `SoundEvent` has nothing to be measured from.
+
+```bash
+ros2 launch marco_audio marco_audio.launch.py                    # the live board
+ros2 launch marco_audio marco_audio.launch.py source:=replay     # saved clap test in a loop, no board
+ros2 launch marco_audio marco_audio.launch.py mic_x:=0.30 mic_y:=0.0 mic_z:=0.29 mic_yaw_deg:=0
+ros2 launch marco_audio marco_audio.launch.py --show-args        # every setting and its default
+```
+
+`mic_x`, `mic_y` and `mic_z` are the board's position in metres from `base_link` (forward, left,
+up). `mic_yaw_deg` is the way its USB edge points (0 = the robot's front, 90 = its left). Give
+the board's rotation in one place only: `mic_yaw_deg` (in the transform) or `yaw_offset_deg`
+(added inside `audio_node`). The launch file refuses both at once, because the rotation would be
+counted twice.
+
+## 12. On the robot's Jetson
+
+[`docs/JETSON_RUNSHEET.md`](docs/JETSON_RUNSHEET.md) is the step-by-step sheet: connecting, which
+terminal window each command goes in, what to expect, a fallback, troubleshooting, the first-time
+set-up, and the interface (topics and message fields) for the other nodes.
+
+Result (11 Nov 2026, the team's Jetson Orin Nano, Ubuntu 22.04, ROS 2 Humble): Linux offers the
+board as one sound card with 6 inputs and 2 outputs. The replay gave the same 24 answers as on
+the laptop. Live, finger clicks from in front of the USB edge were reported at +1.5° to +2.0°,
+and from the opposite side at −173.6° to −174.5°, all with confidence 1.00. `speech_node` played
+its clips through the board's 3.5 mm jack.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -287,6 +391,7 @@ mismatch, the board's case and table reflections, so real recordings decide.
 | Many low-confidence answers near a wall, some pointing backwards | A strong echo inside the window: keep the window ending 2 ms after the onset (default in `live_doa.py`; `--post-ms 2` for `analyse_phat_session.py`), or move the board away from the wall |
 | Angle wrong but `|u|` ≈ 1 | Mic order/orientation wrong: do the tap test |
 | `|u|` far from 1, delays marked "impossible" | Bad recording (echo, clipping, wrong channels) |
+| Anything while running the ROS 2 nodes or on the Jetson | See the table in section 8 of `docs/JETSON_RUNSHEET.md` |
 
 ## Sources
 
