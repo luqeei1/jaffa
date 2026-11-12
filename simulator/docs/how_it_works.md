@@ -3,25 +3,29 @@
 ## The big picture
 Four pieces of software, connected by **ROS 2 topics** (named message channels):
 
+```mermaid
+flowchart LR
+    teleop["You / wasd_teleop /<br/>route_driver"]
+    bridge["ros_gz bridge"]
+    gazebo["Gazebo<br/>physics + sensors<br/>• P3-AT model (4 wheels)<br/>• lidar, IMU, ground truth<br/>• world (office, hall, ...)"]
+    cloud["l2_lidar.py<br/>Unitree L2 scan pattern,<br/>per-point time, motion blur"]
+    odom["Odometry / SLAM<br/>(KISS-ICP, ...)"]
+
+    teleop -- "/cmd_vel" --> bridge
+    bridge <--> gazebo
+    bridge -- "/points_raw, /ground_truth" --> cloud
+    cloud -- "/points" --> odom
+    bridge -- "/imu, /odom" --> odom
+    bridge -- "/ground_truth" --> teleop
 ```
- ┌────────────────┐  /cmd_vel   ┌────────────┐          ┌──────────────────────────────┐
- │ You / teleop / │ ──────────► │ ros_gz     │ ◄──────► │ Gazebo (physics + sensors)    │
- │ route_driver   │             │ bridge     │          │  • P3-AT model (4 wheels)     │
- └────────────────┘             └────────────┘          │  • lidar, IMU, ground truth   │
-         ▲                           │                  │  • world (office, hall, ...)  │
-         │ /odom /points /imu        ▼                  └──────────────────────────────┘
- ┌────────────────┐           ┌──────────────┐
- │ Odometry/SLAM  │ ◄──────── │ cloud_fields │  adds per-point time + motion blur to the lidar
- │ (KISS-ICP...)  │  /points  └──────────────┘
- └────────────────┘
-```
+`route_driver` steers using `/ground_truth`. With manual teleop, you steer by watching Gazebo.
 
 | Piece | What it does |
 |---|---|
 | **Gazebo Fortress** | Simulates physics (wheels, friction, ramps) and renders the lidar and IMU |
 | **ros_gz bridge** | Translates between Gazebo topics and ROS 2 topics |
 | **robot_state_publisher** | Publishes the robot's shape and where its sensors sit (TF) |
-| **cloud_fields.py** | Makes Gazebo's lidar look like a real spinning lidar |
+| **l2_lidar.py** | Makes Gazebo's lidar scan like a Unitree L2 |
 | **Your code** | Anything that sends `/cmd_vel` or reads `/odom`, `/points`, `/imu` |
 
 The topic names match the **real robot**, so code written against the sim runs on the real P3-AT unchanged.
@@ -33,8 +37,8 @@ Defined in `urdf/p3at.urdf.xacro` (URDF = robot description file; xacro = URDF w
 base_footprint            ground point under the robot
  └─ base_link             chassis box, 10 kg
      ├─ 4 wheels          r = 0.111 m, both wheels on a side are driven together (skid steer)
-     ├─ lidar_link        0.286 m up: 16-ring 3D lidar, 10 Hz
-     └─ imu_link          200 Hz IMU, with noise and bias
+     └─ lidar_link        0.28 m up: Unitree L2 lidar (75 × 75 × 65 mm)
+         └─ imu_link      the L2's built-in IMU, 200 Hz, with noise and bias
 ```
 - **Driving:** Gazebo's `DiffDrive` plugin turns `/cmd_vel` (forward speed + turn rate) into wheel speeds.
   It also publishes **wheel odometry** on `/odom`.
@@ -48,13 +52,31 @@ base_footprint            ground point under the robot
 | `/cmd_vel` | Twist | you → robot | speed command |
 | `/odom` | Odometry | robot → you | wheel odometry (drifts, like the real thing) |
 | `/points_raw` | PointCloud2 | Gazebo | raw lidar cloud |
-| `/points` | PointCloud2 | cloud_fields | lidar cloud with `ring` + `time` per point: **use this one** |
+| `/points` | PointCloud2 | l2_lidar | L2 cloud: `x y z intensity ring time` per point: **use this one** |
 | `/imu` | Imu | Gazebo | gyro + accelerometer, 200 Hz |
 | `/ground_truth` | Odometry | Gazebo | true pose in the `world` frame (scoring only) |
 | `/tf`, `/joint_states`, `/clock` | | | frames, wheel angles, simulation time |
 
-Frames: `odom → base_footprint → base_link → lidar_link / imu_link / wheels`.
+Frames: `odom → base_footprint → base_link → lidar_link → imu_link`, plus the wheels.
 All nodes use **simulation time** (`use_sim_time: true`).
+
+## The Unitree L2 lidar
+Specs from [unitree.com/L2](https://www.unitree.com/L2/):
+
+| Spec | L2 | In the sim |
+|---|---|---|
+| Field of view | 360° × 96° (hemisphere, plus 6° below the horizon) | same |
+| Scan pattern | head turns at 5.55 Hz; mirror sweeps the beam over the top at 216 Hz | same timing, point by point |
+| Point rate | 128,000 samples/s, ~64,000/s in view | same |
+| Range | 0.05–30 m, accuracy ≤ 2 cm | same, 1 cm noise |
+| IMU | built in, 0.8 cm from the lidar centre | same offset |
+
+How it is made: Gazebo renders a **1° grid of rays** over the whole field of view at once. `l2_lidar.py`
+then keeps only the rays the L2 would fire during that 0.1 s, gives each point its exact measurement time,
+and (with `distort:=true`) shifts it to where the robot was at that moment, using ground truth.
+
+What it looks like: each 0.1 s cloud is about **43 vertical arcs**, and they land somewhere new every
+frame. Single frames are sparse. That's why the L2 is normally paired with an IMU-based LIO (Point-LIO).
 
 ## Worlds
 Five indoor worlds. Each has hiding spots (under tables, behind shelves, closets, L-shaped walls), and each
@@ -86,6 +108,8 @@ benchmark.sh    ─► all of the above for every world and method, then summari
 
 ## Known limits
 - Software rendering on WSL, so the sim runs at ~0.4× real time. Bags use sim time, so results are unaffected.
-- Lidar motion blur is **emulated** from ground truth, not rendered.
+- The L2 beams snap to a 1° grid of rays, and motion blur is **emulated** from ground truth, not rendered.
+- The worlds have no ceilings, so upward beams return nothing (a real room gives more points).
+- KISS-ICP (lidar only) drifts on the sparse L2 frames: ~0.9 m end error on a 4 m test drive.
 - IMU noise is white noise plus a fixed bias (no slow bias drift).
 - The robot uses simple shapes, not the real P3-AT meshes.

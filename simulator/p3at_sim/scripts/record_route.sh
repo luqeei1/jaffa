@@ -3,7 +3,7 @@
 #
 #   record_route.sh <world> [tag] [launch args...] [-- route_driver params...]
 #   e.g. record_route.sh office base
-#        record_route.sh corridor fast lidar_rings:=8 -- -p max_v:=1.0 -p wobble:=0.4
+#        record_route.sh corridor fast lidar_noise:=0.03 -- -p max_v:=1.0 -p wobble:=0.4
 #
 # Output: $HCR_BAGS/<world>_<tag>/ (default HCR_BAGS=<ws>/bags)
 set -euo pipefail
@@ -34,6 +34,9 @@ ros2 launch p3at_sim sim.launch.py world:="$world" gui:=false "${launch_args[@]}
 sim=$!
 echo "waiting for sensors..."
 timeout 90 ros2 topic echo --once --qos-reliability best_effort /points sensor_msgs/msg/PointCloud2 --field width > /dev/null
+# A stale lidar node from an earlier sim also publishes /points and silently doubles every scan
+pubs=$(ros2 topic info /points | sed -n 's/^Publisher count: //p')
+[[ $pubs == 1 ]] || { echo "/points has $pubs publishers (a stale l2_lidar/cloud_fields node?): stop it first" >&2; exit 1; }
 ros2 bag record -o "$out.wall" /points /imu /ground_truth /odom /tf /tf_static /clock > "$out.rec.log" 2>&1 &
 rec=$!
 sleep 3

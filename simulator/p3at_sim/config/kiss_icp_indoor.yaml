@@ -1,4 +1,4 @@
-# KISS-ICP tuned for the indoor worlds (16-ring lidar, rooms < 30 m).
+# KISS-ICP tuned for the indoor worlds (Unitree L2 lidar, 30 m range, rooms < 30 m).
 # The stock config uses max_range 100 -> 1 m map voxels, too coarse for offices.
 kiss_icp_node:
   ros__parameters:

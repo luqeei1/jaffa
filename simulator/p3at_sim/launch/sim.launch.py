@@ -9,8 +9,7 @@ from launch_ros.actions import Node
 
 # Sensor parameters forwarded to the xacro (see the <xacro:arg> list in p3at.urdf.xacro)
 SENSOR_ARGS = {
-    'lidar_rings': '16', 'lidar_samples': '1024', 'lidar_vfov': '30', 'lidar_hz': '10',
-    'lidar_range': '100', 'lidar_noise': '0.01', 'imu_hz': '200', 'imu_noise_scale': '1.0',
+    'lidar_hz': '10', 'lidar_noise': '0.01', 'imu_hz': '200', 'imu_noise_scale': '1.0',
 }
 # Free spawn pose (x, y) per bundled world, used when x/y are not given
 SPAWN = {'office': (0, -4), 'warehouse': (0, -1.5), 'corridor': (0, 0),
@@ -23,7 +22,7 @@ def launch_setup(context):
 
     robot_desc = xacro.process_file(
         os.path.join(pkg, 'urdf', 'p3at.urdf.xacro'),
-        mappings={k: arg(k) for k in SENSOR_ARGS}).toxml()
+        mappings={k: arg(k) for k in [*SENSOR_ARGS, 'lidar']}).toxml()
 
     world = arg('world')
     sx, sy = SPAWN.get(world, (0, 0))
@@ -53,8 +52,9 @@ def launch_setup(context):
                                'use_sim_time': True}],
                   output='screen')
 
-    # Adds per-point ring/time fields (and optional motion distortion) for LIO methods
-    cloud = Node(package='p3at_sim', executable='cloud_fields.py',
+    # l2: turns Gazebo's range image into a Unitree L2 scan (pattern, per-point time, motion blur)
+    # vlp16: adds ring/time fields and the same motion blur to the 16-ring cloud
+    cloud = Node(package='p3at_sim', executable={'l2': 'l2_lidar.py', 'vlp16': 'cloud_fields.py'}[arg('lidar')],
                  parameters=[{'use_sim_time': True, 'scan_period': 1.0 / float(arg('lidar_hz')),
                               'distort': arg('distort') == 'true'}],
                  output='screen')
@@ -77,6 +77,7 @@ def generate_launch_description():
         DeclareLaunchArgument('yaw', default_value='0'),
         DeclareLaunchArgument('software_gl', default_value='true',
                               description='Force Mesa software GL (needed for gpu_lidar on WSL)'),
+        DeclareLaunchArgument('lidar', default_value='l2', description='l2 (Unitree L2) or vlp16 (16-ring spinning lidar)'),
         DeclareLaunchArgument('distort', default_value='true',
                               description='Emulate spinning-lidar motion distortion using ground truth'),
     ] + [DeclareLaunchArgument(k, default_value=v) for k, v in SENSOR_ARGS.items()]

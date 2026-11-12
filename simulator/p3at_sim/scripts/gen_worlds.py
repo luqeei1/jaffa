@@ -86,6 +86,11 @@ def walls(prefix, cx, cy, lx, ly, h=3.0, t=0.2):
             + box(f'{prefix}_w', cx - lx / 2, cy, h / 2, t, ly, h))
 
 
+def ceiling(name, cx, cy, lx, ly, h):
+    """Slab on top of the walls: an indoor L2 sees it with half its field of view (elevation up to 90 deg)."""
+    return box(name, cx, cy, h + 0.05, lx, ly, 0.1, rgb=(0.85, 0.85, 0.85))
+
+
 def wall(name, x0, y0, x1, y1, h=3.0, t=0.15, gaps=()):
     """Axis-aligned wall from (x0,y0) to (x1,y1). gaps: (centre, width) doorways along it."""
     horiz = abs(y1 - y0) < 1e-6
@@ -152,7 +157,7 @@ def shelf(name, x, y, lx=3.0, ly=0.6, h=2.0, yaw=0.0):
 def office():
     """Multi-room office floor: rooms joined by doorways round a central core, so the
     robot can drive a loop (loop closure / PGO) and many spots are out of line of sight."""
-    s = walls('outer', 0, 0, 24, 16)
+    s = walls('outer', 0, 0, 24, 16) + ceiling('ceiling', 0, 0, 24, 16, 3.0)
     # Central core block (lifts/toilets) forces a loop around it
     s += box('core', 0, 0, 1.5, 4, 3, 3.0, rgb=(0.6, 0.6, 0.6))
     # Room dividers with doorways
@@ -185,7 +190,7 @@ def warehouse():
     """Storage hall with shelving aisles and crate stacks: dense occlusion, repetitive
     aisles (perceptual aliasing), hiding spots at aisle ends and between crate stacks."""
     rnd = random.Random(1)
-    s = walls('wall', 0, 0, 30, 20, h=6.0)
+    s = walls('wall', 0, 0, 30, 20, h=6.0) + ceiling('ceiling', 0, 0, 30, 20, 6.0)
     for row, y in enumerate([-6, -3, 3, 6]):
         for col, x in enumerate([-8, -4, 4, 8]):
             s += shelf(f'shelf_{row}_{col}', x, y, lx=3.0, ly=0.8, h=2.5)
@@ -224,7 +229,7 @@ def corridor():
 def hall():
     """Large sports hall / atrium: few close surfaces, so returns are sparse and far.
     Hiding spots: under the stage, behind stacked mats, inside the equipment store."""
-    s = walls('wall', 0, 0, 40, 28, h=8.0)
+    s = walls('wall', 0, 0, 40, 28, h=8.0) + ceiling('ceiling', 0, 0, 40, 28, 8.0)
     for i, (x, y) in enumerate([(-10, -6), (10, 6), (-10, 6), (10, -6)]):
         s += cyl(f'column_{i}', x, y, 0.3, 8.0)
     # Raised stage on legs along the north wall (hide underneath)
@@ -245,7 +250,7 @@ def hall():
 def split_level():
     """Indoor split-level building: ramp up to a mezzanine and back down, speed bumps.
     Excites pitch/roll/z for vertical drift; hiding spots under the mezzanine."""
-    s = walls('wall', 10, 0, 40, 16, h=6.0)
+    s = walls('wall', 10, 0, 40, 16, h=6.0) + ceiling('ceiling', 10, 0, 40, 16, 6.0)
     ang = math.radians(10)
     run = 4.0
     rise = run * math.tan(ang)

@@ -1,7 +1,7 @@
 # Simulator: Pioneer 3-AT in Gazebo
 
-A simulated **Pioneer 3-AT** (Marco's base) in indoor hide-and-seek worlds, with a 3D lidar, an IMU
-and perfect ground truth. Use it to:
+A simulated **Pioneer 3-AT** (Marco's base) in indoor hide-and-seek worlds, with a simulated
+**Unitree L2** lidar (and its built-in IMU) and perfect ground truth. Use it to:
 
 - **drive the robot** without the real hardware, using the same `/cmd_vel` and `/odom` topics as the real robot;
 - **test odometry / SLAM** (KISS-ICP, LIO methods) on repeatable routes and score them against ground truth.
@@ -63,10 +63,10 @@ Useful launch options:
 |---|---|---|
 | `gui:=false` | `true` | run without the Gazebo window (faster) |
 | `x:= y:= yaw:=` | per world | spawn pose |
-| `lidar_rings:=` / `lidar_samples:=` | 16 / 1024 | lidar resolution |
-| `lidar_range:=`, `lidar_noise:=`, `lidar_hz:=` | 100 m, 0.01 m, 10 Hz | lidar range, noise, rate |
+| `lidar_hz:=` | 10 | clouds per second (each holds 1/`lidar_hz` s of L2 scanning) |
+| `lidar_noise:=` | 0.01 m | range noise (L2 spec: accuracy ≤ 2 cm) |
 | `imu_hz:=`, `imu_noise_scale:=` | 200, 1.0 | IMU rate and noise |
-| `distort:=` | `true` | add realistic spinning-lidar motion blur |
+| `distort:=` | `true` | motion blur like a real moving lidar. `false` = instant scans with `time` = 0 (turn off de-skew in your method) |
 
 ## 4. Test an odometry method (record → replay → score)
 Run these from the workspace root, because `bags/` and `results/` are created there.

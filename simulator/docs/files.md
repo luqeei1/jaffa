@@ -11,8 +11,8 @@ Everything lives in the ROS 2 package `p3at_sim/`. Run scripts with `ros2 run p3
 ## Robot and launch
 | File | What it is |
 |---|---|
-| `urdf/p3at.urdf.xacro` | The robot: body, 4 wheels, lidar, IMU, plus Gazebo plugins for driving, wheel odometry and ground truth. Sensor settings come from launch options |
-| `launch/sim.launch.py` | **Starts everything**: Gazebo with a world, the robot, the ROS↔Gazebo bridge, `robot_state_publisher` and `cloud_fields.py`. Holds the spawn point for each world |
+| `urdf/p3at.urdf.xacro` | The robot: body, 4 wheels, Unitree L2 lidar with its IMU, plus Gazebo plugins for driving, wheel odometry and ground truth. Sensor settings come from launch options |
+| `launch/sim.launch.py` | **Starts everything**: Gazebo with a world, the robot, the ROS↔Gazebo bridge, `robot_state_publisher` and `l2_lidar.py`. Holds the spawn point for each world |
 
 ## Config
 | File | What it is |
@@ -20,7 +20,7 @@ Everything lives in the ROS 2 package `p3at_sim/`. Run scripts with `ros2 run p3
 | `config/bridge.yaml` | Which Gazebo topics are passed to ROS and back (`/cmd_vel`, `/odom`, `/imu`, lidar, `/ground_truth`, `/tf`, `/clock`) |
 | `config/routes.yaml` | Waypoint routes for each world, for automatic driving (`office_loop` is a short test loop) |
 | `config/methods.yaml` | Odometry methods the benchmark can run: launch command + output topic |
-| `config/kiss_icp_indoor.yaml` | KISS-ICP settings tuned for small rooms (0.3 m voxels, 30 m range) |
+| `config/kiss_icp_indoor.yaml` | KISS-ICP settings for the L2 indoors (0.3 m voxels, 30 m range) |
 
 ## Worlds
 | File | What it is |
@@ -43,7 +43,7 @@ All five are **generated** by `scripts/gen_worlds.py`. Don't edit them by hand.
 ## Scripts: sensors and data
 | File | What it is |
 |---|---|
-| `cloud_fields.py` | Turns `/points_raw` into `/points`: drops bad points, adds `ring` + `time` per point, adds spinning-lidar motion blur |
+| `l2_lidar.py` | Turns Gazebo's ray grid (`/points_raw`) into a Unitree L2 cloud (`/points`): L2 scan pattern, `time` per point, motion blur |
 | `record_route.sh` | Starts a headless sim, drives the route, records a bag to `bags/<world>_<tag>/` |
 | `retime_bag.py` | Fixes a bag recorded while the sim was slow or the laptop slept |
 

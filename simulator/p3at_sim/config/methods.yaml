@@ -26,10 +26,17 @@ kiss_icp_indoor:  # same, with config/kiss_icp_indoor.yaml (0.3 m voxels instead
   odom: /kiss/odometry
   time_offset: 0.1
 
+rko_lio:      # apt: ros-humble-rko-lio. Lidar-inertial (the L2's own IMU on /imu), indoor ranges as kiss_icp_indoor.
+  # odom_frame rko_odom: the bag's /tf already has DiffDrive's odom -> base_footprint
+  launch: >-
+    ros2 launch rko_lio odometry.launch.py lidar_topic:=/points imu_topic:=/imu base_frame:=base_footprint
+    odom_frame:=rko_odom use_sim_time:=true autodetect:=false rviz:=false
+    lidar_frame:=lidar_link imu_frame:=imu_link lidar_timestamps.force_relative:=true
+    voxel_size:=0.3 max_range:=30.0 min_range:=0.3
+  odom: /rko_lio/odom
+  time_offset: 0.0
+
 # Planned. Commands are untested until the packages are installed:
-# rko_lio:     # apt: ros-humble-rko-lio (lidar-inertial)
-#   launch: ros2 launch rko_lio odometry.launch.py lidar_topic:=/points imu_topic:=/imu base_frame:=base_footprint use_sim_time:=true
-#   odom: /rko_lio/odometry
-# fast_lio:    # source: hku-mars/FAST_LIO (ROS2 branch), config with lidar_type velodyne, scan_line 16
+# fast_lio:    # source: hku-mars/FAST_LIO (ROS2 branch), needs a config for the L2 (Point-LIO has one: unitreerobotics/point_lio_unilidar)
 # lio_sam:     # source: TixiaoShan/LIO-SAM (ros2 branch) + ros-humble-gtsam, GTSAM loop closure back-end
 # glim:        # koide3/glim PPA, GPU-free CPU build, has global optimisation back-end

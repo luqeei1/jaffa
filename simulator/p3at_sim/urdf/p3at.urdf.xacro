@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
 <robot name="p3at" xmlns:xacro="http://www.ros.org/wiki/xacro">
   <!-- Sensor parameters, overridable from the launch file for stress tests -->
-  <xacro:arg name="lidar_rings" default="16"/>
-  <xacro:arg name="lidar_samples" default="1024"/>
-  <xacro:arg name="lidar_vfov" default="30"/>
+  <!-- lidar: l2 (Unitree L2 pattern, via l2_lidar.py) or vlp16 (16-ring spinning lidar, via cloud_fields.py).
+       Same mount, link and IMU for both, so a comparison changes only the scan pattern. -->
+  <xacro:arg name="lidar" default="l2"/>
+  <xacro:property name="lidar_model" value="$(arg lidar)"/>
   <xacro:arg name="lidar_hz" default="10"/>
-  <xacro:arg name="lidar_range" default="100"/>
   <xacro:arg name="lidar_noise" default="0.01"/>
   <xacro:arg name="imu_hz" default="200"/>
   <xacro:arg name="imu_noise_scale" default="1.0"/>
@@ -93,30 +93,30 @@
   <xacro:wheel name="rear_right"  x="${-wheel_x}" y="${-wheel_y}"/>
 
 
-  <!-- 3D lidar (VLP-16-like by default), mounted on top of the chassis -->
+  <!-- Unitree L2 lidar (75 x 75 x 65 mm, 230 g), upright on top of the chassis -->
   <link name="lidar_link">
     <visual>
-      <geometry><cylinder radius="0.05" length="0.07"/></geometry>
+      <geometry><box size="0.075 0.075 0.065"/></geometry>
       <material name="grey"><color rgba="0.5 0.5 0.5 1"/></material>
     </visual>
-    <collision><geometry><cylinder radius="0.05" length="0.07"/></geometry></collision>
+    <collision><geometry><box size="0.075 0.075 0.065"/></geometry></collision>
     <inertial>
-      <mass value="0.8"/>
+      <mass value="0.23"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
   </link>
   <joint name="lidar_joint" type="fixed">
     <parent link="base_link"/>
     <child link="lidar_link"/>
-    <origin xyz="0.05 0 ${0.05 + body_h/2 + 0.035}"/>
+    <origin xyz="0.05 0 ${0.05 + body_h/2 + 0.0325}"/>
   </joint>
 
-  <!-- IMU, offset from the lidar so extrinsics are non-trivial -->
+  <!-- The L2's built-in IMU. Factory offset IMU -> lidar is (0.007698, 0.014655, -0.00667) m -->
   <link name="imu_link"/>
   <joint name="imu_joint" type="fixed">
-    <parent link="base_link"/>
+    <parent link="lidar_link"/>
     <child link="imu_link"/>
-    <origin xyz="-0.05 0 0.1"/>
+    <origin xyz="-0.007698 -0.014655 0.00667"/>
   </joint>
 
   <xacro:property name="n" value="$(arg imu_noise_scale)"/>
@@ -135,21 +135,43 @@
       <always_on>true</always_on>
       <visualize>false</visualize>
       <lidar>
-        <scan>
-          <horizontal>
-            <samples>$(arg lidar_samples)</samples>
-            <resolution>1</resolution>
-            <min_angle>${-pi}</min_angle>
-            <max_angle>${pi}</max_angle>
-          </horizontal>
-          <vertical>
-            <samples>$(arg lidar_rings)</samples>
-            <resolution>1</resolution>
-            <min_angle>${-$(arg lidar_vfov)/2*pi/180}</min_angle>
-            <max_angle>${$(arg lidar_vfov)/2*pi/180}</max_angle>
-          </vertical>
-        </scan>
-        <range><min>0.3</min><max>$(arg lidar_range)</max><resolution>0.01</resolution></range>
+        <xacro:if value="${lidar_model == 'l2'}">
+          <scan>
+            <!-- A 1-degree range image of the L2's 360 x 96 deg view (elevation -6..90 deg).
+                 l2_lidar.py reads it along the L2's scan pattern. -->
+            <horizontal>
+              <samples>361</samples>
+              <resolution>1</resolution>
+              <min_angle>${-pi}</min_angle>
+              <max_angle>${pi}</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>97</samples>
+              <resolution>1</resolution>
+              <min_angle>${-6*pi/180}</min_angle>
+              <max_angle>${pi/2}</max_angle>
+            </vertical>
+          </scan>
+          <range><min>0.05</min><max>30</max><resolution>0.0045</resolution></range>
+        </xacro:if>
+        <xacro:if value="${lidar_model == 'vlp16'}">
+          <!-- VLP-16-like: 16 rings over +-15 deg, 1024 samples per ring (as the pre-L2 sim) -->
+          <scan>
+            <horizontal>
+              <samples>1024</samples>
+              <resolution>1</resolution>
+              <min_angle>${-pi}</min_angle>
+              <max_angle>${pi}</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>16</samples>
+              <resolution>1</resolution>
+              <min_angle>${-15*pi/180}</min_angle>
+              <max_angle>${15*pi/180}</max_angle>
+            </vertical>
+          </scan>
+          <range><min>0.3</min><max>100</max><resolution>0.01</resolution></range>
+        </xacro:if>
         <noise><type>gaussian</type><mean>0</mean><stddev>$(arg lidar_noise)</stddev></noise>
       </lidar>
     </sensor>

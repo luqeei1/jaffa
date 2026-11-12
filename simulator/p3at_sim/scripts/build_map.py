@@ -24,6 +24,7 @@ import argparse
 import os
 
 import numpy as np
+from numpy.lib.recfunctions import repack_fields
 from rosbags.rosbag2 import Reader
 from rosbags.typesys import Stores, get_typestore
 from scipy.spatial.transform import Rotation, Slerp
@@ -155,7 +156,8 @@ def voxel_down(pts, size):
 def write_ply(path, arr):
     """Binary PLY from a structured array (x, y, z [, ...])."""
     types = {'<f4': 'float', '<f8': 'double', '<u2': 'ushort', '<u4': 'uint', '<i4': 'int', '|u1': 'uchar'}
-    arr = np.ascontiguousarray(arr)
+    # Drop struct padding (the L2 cloud has 2 bytes after `ring`): PLY rows are the listed properties only
+    arr = np.ascontiguousarray(repack_fields(arr))
     props = ''.join(f'property {types[arr.dtype.fields[n][0].str]} {n}\n' for n in arr.dtype.names)
     with open(path, 'wb') as f:
         f.write(f'ply\nformat binary_little_endian 1.0\nelement vertex {len(arr)}\n{props}end_header\n'.encode())
