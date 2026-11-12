@@ -3,6 +3,7 @@ marco_audio.launch.py - starts Marco's ears and voice with one command (Ahmad, N
 
 What it starts
     1. audio_node   listens to the ReSpeaker board and publishes one SoundEvent per sound
+                    (where it came from and, if Vosk is installed, whether it was "marco" or "polo")
     2. speech_node  plays a voice clip when a name arrives on /marco/speech/say
     3. a static transform  parent_frame -> frame_id  (normally base_link -> mic_array_link).
        This is a fixed note that says where the board sits on the robot and which way it
@@ -19,6 +20,9 @@ Run it (after "colcon build" and "source install/setup.bash")
 
     ros2 launch marco_audio marco_audio.launch.py mic_x:=0.10 mic_z:=0.25 mic_yaw_deg:=90
         the board is 10 cm in front of the robot's centre, 25 cm above it, USB edge to the left
+
+    ros2 launch marco_audio marco_audio.launch.py keywords:=false
+        directions only: do not try to recognise the words "marco" and "polo"
 
     ros2 launch marco_audio marco_audio.launch.py --show-args
         lists every setting below with its default value
@@ -82,6 +86,13 @@ ARGS = [
      "90 = its left, 180 = its back, -90 = its right"),
     ("speech", "true",
      "true = also start speech_node. false = ears only"),
+    ("keywords", "auto",
+     "auto = also spot the words marco and polo if the Vosk recogniser and its model are "
+     "installed, otherwise carry on without. true = insist on it. false = off"),
+    ("kws_model", "",
+     "the Vosk model folder. Empty = look in the usual places, first ~/marco_ws/models"),
+    ("kws_min_conf", "0.6",
+     "a word the recogniser is less sure of than this (0 to 1) is not counted"),
 ]
 
 
@@ -141,6 +152,13 @@ def _setup(context, *args, **kwargs):
     device = _text(context, "device")
     if device:                                   # empty = let audio_node find the board by name
         audio["device"] = device
+    # The words "marco" and "polo". "auto" stays text; anything else must be a yes or a no.
+    keywords = _text(context, "keywords").lower()
+    audio["keywords"] = "auto" if keywords == "auto" else _yes_no(context, "keywords")
+    audio["kws_min_conf"] = _number(context, "kws_min_conf")
+    kws_model = _text(context, "kws_model")
+    if kws_model:                                # empty = let audio_node look in the usual places
+        audio["kws_model"] = kws_model
     if source == "replay":
         audio["replay_path"] = _text(context, "replay_path")
         audio["replay_loop"] = _yes_no(context, "replay_loop")
@@ -148,7 +166,7 @@ def _setup(context, *args, **kwargs):
 
     start = [Node(package=PACKAGE, executable="audio_node", name="audio_node",
                   output="screen", parameters=[audio])]
-    summary = f"Marco audio: ears = {source}"
+    summary = f"Marco audio: ears = {source}, keywords = {keywords}"
 
     # 2. the voice --------------------------------------------------------------------------
     if _yes_no(context, "speech"):

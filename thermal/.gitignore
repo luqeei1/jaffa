@@ -1,0 +1,3 @@
+# Local captures (raw temperature arrays and images)
+captures/
+.pytest_cache/
