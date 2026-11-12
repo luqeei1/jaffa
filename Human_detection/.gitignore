@@ -1,6 +1,0 @@
-# Downloaded automatically on first run
-*.pt
-# Local data
-snapshots/
-recordings/
-.pytest_cache/
