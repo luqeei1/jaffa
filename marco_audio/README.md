@@ -38,6 +38,7 @@ marco_audio/
 │   ├── test_doa_phat.py    self-tests for doa_phat.py (ideal delays, no hardware)
 │   ├── analyse_phat_session.py  all methods on a measure_directions session -> results_phat.csv
 │   ├── live_doa.py         live direction finder: every method + chip, saves each run, --replay
+│   ├── keyword_spotter.py  tells the words "marco" and "polo" from every other sound (Vosk)
 │   ├── export_clips.py     small clips.npz of a run's sounds, to share or send for checking
 │   └── make_placeholder_clips.py  rebuilds the four placeholder clips in clips/
 ├── sim/                    room simulation (pyroomacoustics) to compare the methods
@@ -304,6 +305,17 @@ fields. This folder is a ROS 2 Humble package with two nodes:
   confidence from 0 to 1 and the loudness. It imports the `Listener` class from
   `tools/live_doa.py`, so a sound gets the same answer here as in the live clap test (section 8).
   With `source:=replay` it plays a saved run through the same code instead of the microphone.
+- **Keyword spotting.** If the Vosk speech recogniser and its model are installed (run sheet,
+  section 10), `audio_node` also works out whether the sound was the word "marco" or "polo"
+  and puts it in the message's `keyword` field (`type` becomes `keyword`). It hands
+  `tools/keyword_spotter.py` the sound from 0.3 s before to 1.0 s after the start of each sound,
+  taken from the channel the board's chip cleans up for speech. The recogniser may only answer
+  "marco", "polo" or "something else", and a word counts only if its confidence is at least
+  0.6 and it starts when the sound starts. Because the whole word has to be heard first, each
+  message then goes out about a second after its sound started (the time stamp is still the
+  start of the sound). Without Vosk the node works as before and `keyword` stays empty;
+  `-p keywords:=false` switches it off. Not measured yet: how many real "Polo!"s it catches
+  and how often ordinary talk is mistaken for one.
 - **`speech_node`** (Marco's voice) plays `clips/<name>.wav` through the board when a name arrives
   on `/marco/speech/say`, and publishes `true` on `/marco/speech/active` while it plays.
   `audio_node` ignores sounds that start while that is true, so Marco does not report his own
@@ -345,7 +357,17 @@ Checks that need no ROS 2 and no board (stand-in ROS modules in `test/`), from t
 ```bash
 python test/test_audio_node.py     # 28 checks: replay publishes exactly what live_doa.py finds
 python test/test_speech_node.py    # 22 checks: queueing, the speaking flag, a player that fails
-python test/test_launch_file.py    # 39 checks: what the launch file starts, and with what settings
+python test/test_launch_file.py    # 45 checks: what the launch file starts, and with what settings
+python test/test_keyword_spotter.py  # 35 checks: which words count, and how audio_node uses the spotter
+```
+
+With Vosk and its model installed, `test_keyword_spotter.py` runs 4 more checks with the real
+recogniser: silence and hiss are not words, and none of the 24 claps of the 28 Oct session is
+called "marco" or "polo". To see what the spotter says for every sound of a saved run:
+
+```bash
+cd tools
+python keyword_spotter.py ../recordings/dirtest_20261028_1921
 ```
 
 ## 11. Launch file
@@ -358,6 +380,7 @@ angle in a `SoundEvent` has nothing to be measured from.
 ros2 launch marco_audio marco_audio.launch.py                    # the live board
 ros2 launch marco_audio marco_audio.launch.py source:=replay     # saved clap test in a loop, no board
 ros2 launch marco_audio marco_audio.launch.py mic_x:=0.30 mic_y:=0.0 mic_z:=0.29 mic_yaw_deg:=0
+ros2 launch marco_audio marco_audio.launch.py keywords:=false    # directions only, no word spotting
 ros2 launch marco_audio marco_audio.launch.py --show-args        # every setting and its default
 ```
 

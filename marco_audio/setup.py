@@ -9,7 +9,7 @@ package_name = "marco_audio"
 # These files are installed next to the nodes, so the nodes import the very same code
 # that the clap tests ran - nothing is copied or re-written.
 TOOLS = ["live_doa.py", "doa_phat.py", "mic_array.py", "analyse_clap.py",
-         "analyse_directions.py", "analyse_phat_session.py"]
+         "analyse_directions.py", "analyse_phat_session.py", "keyword_spotter.py"]
 
 setup(
     name=package_name,

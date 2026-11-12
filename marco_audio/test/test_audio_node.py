@@ -10,6 +10,10 @@ the parameters, the error messages and the live microphone path (with a pretend 
 What it does NOT check: that the packages build and that real ROS 2 delivers the messages.
 That is checked with "colcon build" and "ros2 topic echo".
 
+The keyword spotter is switched off here (keywords:=false), so these checks give the same
+result on a computer with or without the speech recogniser. It has its own test file:
+test_keyword_spotter.py.
+
 Run:   python test/test_audio_node.py        (from the marco_audio folder; takes about a minute)
 """
 import importlib
@@ -46,6 +50,7 @@ def check(name, passed, extra=""):
 def make(**params):
     """Start a fresh node with these parameters (as  -p name:=value  would)."""
     rclpy.OVERRIDES.clear()
+    rclpy.OVERRIDES.update(keywords=False)
     rclpy.OVERRIDES.update(params)
     rclpy.CLOCK["ns"] = 1_000_000_000_000
     return node_module.AudioNode()
@@ -210,7 +215,7 @@ for name, params, words in [("device given as a number", dict(device=2), None),
 
 # 8. main() starts and shuts down cleanly -----------------------------------------------------
 rclpy.OVERRIDES.clear()
-rclpy.OVERRIDES.update(source="replay", replay_path=str(RUN))
+rclpy.OVERRIDES.update(source="replay", replay_path=str(RUN), keywords=False)
 node_module.main()
 check("main() starts and shuts down cleanly", not rclpy.ok())
 

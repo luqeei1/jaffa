@@ -4,3 +4,5 @@ matplotlib
 sounddevice
 pyusb
 libusb-package
+# Optional, only for the "marco"/"polo" keyword spotter (tools/keyword_spotter.py):
+#   pip install vosk

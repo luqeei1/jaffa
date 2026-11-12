@@ -7,6 +7,12 @@ What it does
     starts, it publishes ONE SoundEvent message: where the sound came from, how sure it is and
     how loud it was. Other nodes (the belief map) subscribe to that topic.
 
+    If the Vosk speech recogniser and its model are installed, it also works out WHAT the sound
+    was: the word "marco", the word "polo", or neither (tools/keyword_spotter.py). The answer
+    goes in the message's "keyword" box, and "type" becomes "keyword". The recogniser has to
+    hear the whole word first, so each message then goes out about a second after its sound
+    started. The time stamp inside the message is still the moment the sound started.
+
     The listening and the direction finding are NOT re-written here. This file imports the
     Listener class from tools/live_doa.py - the code the live clap test used - so a sound gets
     the same answer here as it did there.
@@ -38,11 +44,23 @@ Parameters (add them after --ros-args as  -p name:=value)
     trigger_db           how many dB above the room's background starts a sound
                          (0 = automatic: live_doa.py's value, or the saved run's own)
     min_db               sounds quieter than this (dBFS) are ignored (0 = automatic, as above)
-    min_confidence       sounds whose direction scores below this are not published (default 0)
+    min_confidence       sounds whose direction scores below this are not published (default 0).
+                         With keyword spotting on, a "marco" or "polo" is published even then
     mute_while_speaking  true (default) = ignore sounds that start while Marco is speaking
     mute_hold_s          ...and for this long after he stops (default 0.3 s)
     topic                where the SoundEvents go (default /marco/audio/sound_event)
     speaking_topic       where speech_node says it is speaking (default /marco/speech/active)
+    keywords             auto (default) = spot "marco" / "polo" if Vosk and its model are
+                         installed, otherwise carry on without. true = insist (stop with an
+                         error if they are missing). false = off
+    kws_model            the Vosk model folder. Empty (default) = look in the usual places,
+                         first of all ~/marco_ws/models/vosk-model-small-en-us-0.15
+    kws_channel          which sound the recogniser listens to: 1 (default) = the channel the
+                         board's chip cleans up for speech, 0 = its other cleaned-up channel,
+                         raw = the average of the four raw microphones
+    kws_min_conf         a word the recogniser is less sure of than this is ignored (default 0.6)
+    kws_post_s           how much sound after the start of a sound the recogniser gets
+                         (default 1.0 s). Longer = later messages
 """
 import math
 import os
@@ -78,6 +96,9 @@ def _find_tools():
     for folder in places:
         if (folder / "live_doa.py").exists():
             sys.path.insert(0, str(folder))
+            # The other place is searched after this one. A script added to the source folder
+            # since the last "colcon build" is then still found (with --symlink-install).
+            sys.path.extend(str(p) for p in places if p != folder and p.is_dir())
             return folder
     raise ImportError("Cannot find live_doa.py. Looked in: " + ", ".join(map(str, places)))
 
@@ -85,12 +106,14 @@ def _find_tools():
 TOOLS_DIR = _find_tools()
 import live_doa as ld      # noqa: E402  (must come after _find_tools)
 import mic_array as ma     # noqa: E402
+import keyword_spotter as ks   # noqa: E402  (loads the recogniser only when it is switched on)
 
 FS = ma.FS
 BLOCK = 320                                   # 20 ms of audio, the block size live_doa.py uses
 NAME_HINTS = ("respeaker", "xvf", "3800")     # words to look for in the board's device name
 # SoundEvent.method -> the name live_doa.py gives that method's results
 METHODS = {"gcc_phat": "gcc", "gcc_phat_robust": "robust", "srp_phat": "srp"}
+KWS_RING_S = 8.0                              # seconds of sound kept for the keyword spotter
 
 
 def wrap_pi(angle):
@@ -135,19 +158,33 @@ class AudioNode(Node):
         min_db = float(self._param("min_db", 0.0))
         topic = str(self._param("topic", "/marco/audio/sound_event"))
         speaking_topic = str(self._param("speaking_topic", "/marco/speech/active"))
+        keywords = str(self._param("keywords", "auto")).strip().lower()
+        kws_model = str(self._param("kws_model", ""))
+        self.kws_channel = str(self._param("kws_channel", 1)).strip().lower()
+        kws_min_conf = float(self._param("kws_min_conf", ks.MIN_CONF))
+        self.kws_pre = int(ks.PRE_S * FS)
+        self.kws_post = int(float(self._param("kws_post_s", ks.POST_S)) * FS)
 
         if self.method not in METHODS:
             raise ValueError(f"method must be one of {sorted(METHODS)}, not '{self.method}'")
         if self.source not in ("live", "replay"):
             raise ValueError(f"source must be live or replay, not '{self.source}'")
+        if self.kws_channel not in ("0", "1", "raw", "-1"):
+            raise ValueError(f"kws_channel must be 0, 1 or raw, not '{self.kws_channel}'")
+        if not 0.3 * FS <= self.kws_post <= (KWS_RING_S - 2.0) * FS:
+            raise ValueError(f"kws_post_s must be between 0.3 and {KWS_RING_S - 2.0:g} seconds")
 
         # A publisher sends messages on a topic; a subscription receives them.
         self.pub = self.create_publisher(SoundEvent, topic, 10)
         self.create_subscription(Bool, speaking_topic, self._on_speaking, 10)
         self.speaking = []            # [start_ns, end_ns or None] for each time Marco spoke
-        self.published = self.muted = self.skipped = 0
+        self.published = self.muted = self.skipped = self.keywords_found = 0
         self.stream = None
         self.warm_reported = False
+        # The keyword spotter is loaded before the microphone is opened: loading its model takes
+        # a second or two, and no sound should pile up while that happens.
+        self.spotter, self.kws_ring, self.waiting, self.spotter_failed = None, None, [], False
+        self._start_keywords(keywords, kws_model, kws_min_conf)
 
         if self.source == "replay":
             if not replay_path:
@@ -200,7 +237,30 @@ class AudioNode(Node):
     def _new_listener(self):
         # No labels (nobody is telling us the true angle) and no chip readings: the chip's own
         # direction is only used for comparison in live_doa.py's tests.
+        if self.spotter is not None:
+            # The spotter's own loop of tape: the last few seconds of the channel it listens to.
+            # It starts together with the listener, so both count samples from the same zero.
+            self.kws_ring = ld.Ring(KWS_RING_S, 1)
         return ld.Listener(ld.Labels(), None, self.trigger_db, self.min_db)
+
+    def _start_keywords(self, mode, model, min_conf):
+        """Switch the keyword spotter on, if it was asked for and can be."""
+        if mode in ("false", "0", "no", "off"):
+            return
+        if mode not in ("auto", "true", "1", "yes", "on"):
+            raise ValueError(f"keywords must be auto, true or false, not '{mode}'")
+        try:
+            self.spotter = ks.KeywordSpotter(model, min_conf=min_conf)
+        except Exception as e:                      # not installed, no model, model will not load
+            if mode != "auto":
+                raise
+            self.get_logger().info(f"Keyword spotting is off, so 'keyword' stays empty. Reason: {e}")
+            return
+        heard_on = "the four raw mics" if self.kws_channel in ("raw", "-1") else f"channel {self.kws_channel}"
+        self.get_logger().info(
+            f"Keyword spotting is on: listening for {', '.join(self.spotter.words)} on {heard_on} "
+            f"(model {self.spotter.model_path.name}, confidence at least {min_conf:g}). "
+            f"Each message now goes out about {self.kws_post / FS + 0.1:.1f} s after its sound started.")
 
     def _find_run(self, path):
         """The run folder: as given, or by name inside the package's recordings/ folder."""
@@ -256,6 +316,7 @@ class AudioNode(Node):
         while self.replay_owed >= 1.0:
             self.replay_owed -= 1.0
             if self.replay_pos >= len(self.replay_data):
+                self._release(everything=True)      # sounds still waiting for the spotter
                 if self.replay_loop:
                     self.get_logger().info("Replay finished - starting again.")
                     self.replay_pos, self.warm_reported = 0, False
@@ -272,6 +333,8 @@ class AudioNode(Node):
 
     def _feed(self, block, rate):
         """Give one block of audio to the listener and publish any sound it has finished with."""
+        if self.spotter is not None:
+            self.kws_ring.write(ks.pick_channel(block, self.kws_channel).reshape(-1, 1))
         events = self.listener.feed(block)
         if self.listener.warmed_up and not self.warm_reported:
             self.warm_reported = True
@@ -283,6 +346,7 @@ class AudioNode(Node):
             # The sound started (total - sample) samples ago; turn that into a time stamp.
             lag_s = (self.listener.total - ev["sample"]) / (FS * rate)
             self._publish(ev, self._now_ns() - int(lag_s * 1e9))
+        self._release()
 
     # ---- one sound -> one message -------------------------------------------------------------
     def _publish(self, ev, stamp_ns):
@@ -291,13 +355,49 @@ class AudioNode(Node):
         if any(math.isnan(v) for v in (az_deg, conf, std_deg)):
             self.skipped += 1                       # too close to the edge of the buffer to analyse
             return
-        if conf < self.min_confidence:
+        doubtful = conf < self.min_confidence
+        if doubtful and self.spotter is None:
             self.skipped += 1
             return
         if self.mute_while_speaking and self._was_speaking(stamp_ns):
             self.muted += 1
             self.get_logger().info(f"Sound at {ev['t']:.2f} s ignored: Marco was speaking.")
             return
+        if self.spotter is None:
+            self._send(ev, stamp_ns)                # no keyword spotter: send it straight away
+        else:
+            # The spotter needs to hear the whole word first. A sound with a doubtful direction
+            # waits too: if it turns out to be "marco" or "polo" it is still worth sending.
+            self.waiting.append((ev, stamp_ns, doubtful))
+
+    def _release(self, everything=False):
+        """Send the waiting sounds whose stretch of audio for the keyword spotter has arrived.
+        everything=True sends all of them now, with whatever audio there is (end of a replay)."""
+        while self.waiting:
+            ev, stamp_ns, doubtful = self.waiting[0]
+            onset, ring = int(ev["sample"]), self.kws_ring
+            if not everything and ring.n < onset + self.kws_post:
+                return                              # its second of sound is not complete yet
+            self.waiting.pop(0)
+            a = max(onset - self.kws_pre, ring.n - len(ring.buf), 0)
+            b = min(onset + self.kws_post, ring.n)
+            if b > a and not self.spotter_failed:
+                try:
+                    answer = self.spotter.spot(ring.read(a, b).ravel(), (onset - a) / FS)
+                    ev["keyword"], ev["keyword_conf"] = answer["keyword"], answer["conf"]
+                    ev["heard"] = answer["found"]
+                except Exception as e:              # never let the recogniser stop the directions
+                    self.spotter_failed = True
+                    self.get_logger().error(f"The keyword spotter failed and is now off: {e}")
+            if doubtful and not ev.get("keyword"):
+                self.skipped += 1                   # doubtful direction and not a game word: drop it
+                continue
+            self._send(ev, stamp_ns)
+
+    def _send(self, ev, stamp_ns):
+        key = METHODS[self.method]
+        az_deg, conf, std_deg = ev[key], ev[key + "_conf"], ev[key + "_std"]
+        keyword = str(ev.get("keyword") or "")
 
         msg = SoundEvent()
         msg.header.stamp.sec = int(stamp_ns // 1_000_000_000)
@@ -309,13 +409,23 @@ class AudioNode(Node):
         msg.confidence = float(conf)
         msg.level_db = float(ev["level_dbfs"])
         msg.method = self.method
-        msg.type = "sound"                          # not classified yet (keyword spotter: later)
-        msg.keyword = ""
+        msg.type = "keyword" if keyword else "sound"
+        msg.keyword = keyword                       # "marco", "polo" or empty
         self.pub.publish(msg)
         self.published += 1
         note = ""
         if key == "robust" and ev["robust_label"] not in ("all", ""):
             note = f"  [{ev['robust_label']}]"
+        if keyword:
+            self.keywords_found += 1
+            note += f"  keyword {keyword.upper()} ({ev['keyword_conf']:.2f})"
+        else:
+            # A game word that was heard but not counted (too unsure, or it started too long
+            # before or after this sound) is still shown, so the limits can be tuned.
+            words = self.spotter.words if self.spotter is not None else ()
+            near = [w for w in ev.get("heard") or [] if w["word"] in words]
+            if near:
+                note += "  (heard " + ", ".join(f"{w['word']} {w['conf']:.2f}" for w in near) + ": not counted)"
         self.get_logger().info(
             f"#{self.published}: {math.degrees(msg.azimuth):+6.1f} deg  "
             f"(+-{math.degrees(msg.azimuth_std):.1f})  confidence {msg.confidence:.2f}  "
