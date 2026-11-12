@@ -196,7 +196,9 @@ Window 1 should show, in the first few seconds:
 1. `Marco audio: ears = live, voice = on, mic_array_link is ...`
 2. `[mic_array_tf]: Spinning until stopped - publishing transform` and `from 'base_link' to 'mic_array_link'`
 3. `[speech_node]: Ready. Player: aplay -q -D plughw:CARD=Array,DEV=0. Clips in ...: found_you, marco, polo, sleepy.`
-4. `[audio_node]: Listening to device 0: reSpeaker XVF3800 4-Mic Array ...` then `Background -9x dBFS ... Listening.`
+4. `[audio_node]: Keyword spotting is on: listening for marco, polo on channel 1 ...`
+   (or `Keyword spotting is off ...` if the recogniser is not installed: section 10)
+5. `[audio_node]: Listening to device <number>: reSpeaker XVF3800 4-Mic Array ...` then `Background -9x dBFS ... Listening.`
 
 Stay quiet until the `Listening.` line: the node is measuring the room's background noise.
 After that, every sound gives one line in Window 1, for example:
@@ -207,6 +209,17 @@ After that, every sound gives one line in Window 1, for example:
 
 0 deg is straight out of the board's USB edge. Positive angles are anticlockwise seen from above
 (to the left). Window 1 is now busy: leave it running and do the checks in Window 2.
+
+With keyword spotting on, say "Polo!" clearly, about 1 m from the board. Its line ends with the
+word and how sure the recogniser is:
+
+```
+#2:   +3.1 deg  (+-2.0)  confidence 0.93  level -48 dBFS  keyword POLO (0.97)
+```
+
+Each line now appears about a second after its sound, because the recogniser has to hear the
+whole word first. A line ending in `(heard polo 0.41: not counted)` means the word was heard
+but the recogniser was not sure enough.
 To stop everything, press **Ctrl+C** in Window 1.
 
 **Once the board is mounted on the robot**, say where it is. Measure from `base_link` (the centre
@@ -328,6 +341,8 @@ instead lists all of them.
 | `min_confidence` | `0.0` | `min_confidence:=0.5` stops doubtful directions being published |
 | `method` | `gcc_phat_robust` | or `gcc_phat`, `srp_phat` |
 | `speech` | `true` | `false` = ears only |
+| `keywords` | `auto` | `auto` = spot "marco" / "polo" if the recogniser is installed. `false` = directions only. `true` = stop with an error if it is missing |
+| `kws_min_conf` | `0.6` | a word the recogniser is less sure of than this is not counted. `kws_min_conf:=0.4` catches more words and makes more mistakes |
 | `publish_tf` | `true` | `false` if another node already publishes `base_link -> mic_array_link` |
 | `mic_x` `mic_y` `mic_z` `mic_yaw_deg` | `0` | where the board is on the robot (section 4) |
 | `sound_topic` | `/marco/audio/sound_event` | publish the sounds somewhere else |
@@ -347,6 +362,9 @@ Any other command in this table goes in Window 2.
 | `No module named 'sounddevice'` (Window 1) | the first-time set-up was not done for this user | section 10 |
 | claps give no line in Window 1 | quieter than -70 dBFS, or not 20 dB above the room's noise | clap closer, or launch again with `min_db:=-80` on the end |
 | many `[inconsistent]` lines or low confidence | echoes: board covered, or right next to a wall | keep the board in the open, 30 cm or more from walls; launch again with `min_confidence:=0.5` on the end |
+| `Keyword spotting is off ...` (Window 1) | the recogniser or its model is not installed for this user | section 10, the keyword spotter part. The directions work without it |
+| "Polo!" gives a line with no keyword | too quiet, too far, or said while someone else was talking | say it louder and alone; look for `(heard polo ...: not counted)` and, if it shows, launch again with `kws_min_conf:=0.4` on the end |
+| other words are reported as `POLO` or `MARCO` | words that sound alike ("hello", "marker") can fool it | launch again with `kws_min_conf:=0.8` on the end, or `keywords:=false` to switch it off |
 | the voice is too quiet or too loud | the board's playback volume | `amixer -c Array sset 'PCM',0 55` then `amixer -c Array sset 'PCM',1 55` (scale 0 to 60) |
 | no voice at all | plugged into the wrong socket | the plug goes in the board's jack; the `Ready. Player:` line in Window 1 must say `CARD=Array` |
 | `ros2 topic echo` prints nothing in Window 2 | the two windows are on different ROS domains | the same `export ROS_DOMAIN_ID=...` line in both windows, or in neither |
@@ -401,6 +419,24 @@ python3 -c "import sounddevice as sd; print(sd.query_devices())"
 ```
 
 One line must read `reSpeaker XVF3800 4-Mic Array: USB Audio (hw:...), ALSA (6 in, 2 out)`.
+
+**The keyword spotter** (the words "marco" and "polo") needs the Vosk speech recogniser and its
+model: three small Python libraries for this user and one 40 MB folder in `~/marco_ws/models`.
+Without them everything else still works and `keyword` stays empty.
+
+**Window 1:**
+
+```
+python3 -c "import requests, cffi; print('ok')"
+python3 -m pip install --user --no-deps vosk srt tqdm
+mkdir -p ~/marco_ws/models
+cd ~/marco_ws/models
+wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+python3 -m zipfile -e vosk-model-small-en-us-0.15.zip .
+ls vosk-model-small-en-us-0.15
+```
+
+The first line must print `ok` and the last one `README  am  conf  graph  ivector`.
 Then carry on from section 2.
 
 ---
@@ -425,8 +461,8 @@ Then carry on from section 2.
 | `confidence` | float32 | 0 (do not trust) to 1 (trust). Below 0.5 is doubtful |
 | `level_db` | float32 | loudness in dBFS: 0 is the loudest the board can measure, a clap at 1 m is about -40 |
 | `method` | string | `gcc_phat`, `gcc_phat_robust` or `srp_phat` |
-| `type` | string | `sound` for now (later: `speech`, `keyword`, `laugh`) |
-| `keyword` | string | `marco` or `polo` once the keyword spotter is in. Empty for now |
+| `type` | string | `keyword` if the sound was one of the game words, otherwise `sound` |
+| `keyword` | string | `marco` or `polo`, or empty if it was neither (always empty when the keyword spotter is off) |
 
 **Using it in another node (Python)**
 
@@ -436,6 +472,8 @@ from marco_audio_msgs.msg import SoundEvent
 self.create_subscription(SoundEvent, "/marco/audio/sound_event", self.on_sound, 10)
 
 def on_sound(self, msg):
+    if msg.keyword == "polo":
+        ...                         # somebody answered "Polo!"
     if msg.confidence < 0.5:
         return                      # doubtful direction: ignore it
     bearing = msg.azimuth           # radians, in the frame msg.header.frame_id
@@ -453,5 +491,14 @@ The message type lives in the package `marco_audio_msgs`. A terminal can use it 
 - audio_node drops any sound that starts while `/marco/speech/active` is true (and for 0.3 s
   after), so Marco does not report his own voice.
 - Sounds with a doubtful direction are still published, with a low `confidence`. Filter on it.
+- With the keyword spotter on, a message goes out about 1 s after its sound started, because
+  the whole word has to be heard first. `header.stamp` is still the moment the sound started,
+  so use the stamp, not the arrival time.
+- `keyword` says what the recogniser heard, `confidence` says how good the direction is. They
+  are separate: a clear "polo" can come with a doubtful direction. A "marco" or "polo" is
+  published even when its direction is below `min_confidence`.
+- The recogniser only knows two words, so a word that sounds like one of them ("hello",
+  "marker") can be reported as it. Treat `polo` as "probably polo", most of all outside the
+  seconds after Marco has called out.
 - Marco's voice must come out through the mic board (its speaker socket or 3.5 mm jack). The
   board can only cancel the echo of sound that it played itself.

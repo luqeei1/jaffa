@@ -147,6 +147,23 @@ check("yes/no/1/0/on/off are understood as well as true/false",
       all("speech_node" in nodes(launch(speech=v)) for v in ("True", "yes", "1", "on"))
       and all("speech_node" not in nodes(launch(speech=v)) for v in ("False", "no", "0", "off")))
 
+# 6b. The words "marco" and "polo" ------------------------------------------------------------
+p = audio_params()
+check("keywords: 'auto' by default (as text), confidence limit 0.6 (a number), no model path",
+      p["keywords"] == "auto" and type(p["kws_min_conf"]) is float and p["kws_min_conf"] == 0.6
+      and "kws_model" not in p)
+check("keywords:=false really is false, keywords:=TRUE is true",
+      audio_params(keywords="false")["keywords"] is False and audio_params(keywords="TRUE")["keywords"] is True)
+p = audio_params(kws_model="/somewhere/model", kws_min_conf=0.8)
+check("kws_model and kws_min_conf are passed on",
+      p["kws_model"] == "/somewhere/model" and p["kws_min_conf"] == 0.8)
+check("keywords:=maybe is refused", "keywords" in (fails(keywords="maybe") or ""))
+check("the summary line says whether keywords are on",
+      "keywords = auto" in launch()[0].msg and "keywords = false" in launch(keywords="false")[0].msg)
+check("setup.py installs tools/keyword_spotter.py next to the nodes",
+      '"keyword_spotter.py"' in (PKG / "setup.py").read_text()
+      and (PKG / "tools" / "keyword_spotter.py").exists())
+
 # 7. The transform ----------------------------------------------------------------------------
 tf = tf_values(nodes(launch())["static_transform_publisher"])
 check("default transform: base_link -> mic_array_link, no offset, no rotation",
