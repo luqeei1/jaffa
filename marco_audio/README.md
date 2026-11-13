@@ -242,6 +242,86 @@ print(np.degrees(r["srp_phat"]["azimuth_rad"]), r["srp_phat"]["confidence"])
 
 ## 8. Live direction finder (`live_doa.py`)
 
+To view a live audio belief map on Windows, run from the repository root with your ReSpeaker WASAPI device index:
+
+```powershell
+python marco_audio/tools/audio_belief_live.py --device 14
+```
+
+The viewer defaults to **Vosk Polo recognition**, using `vosk-model-small-en-us-0.15`
+at the repository root (or `--model PATH`). Install the optional speech dependency with
+`python -m pip install vosk`. The model must be extracted, with `am/final.mdl` inside it.
+
+```powershell
+python marco_audio/tools/audio_belief_live.py --device 14 --debug-speech
+# Original Ahmad sound detector, without word recognition:
+python marco_audio/tools/audio_belief_live.py --device 14 --sound
+```
+
+Say Polo normally, then pause for a second. Vosk checks processed channels 0 and 1;
+Ahmad's robust GCC-PHAT estimates bearing on raw channels 2–5 during the recognised
+word's sample timestamps. Speech uses 40 ms windows, rather than the clap-onset window.
+Only final Polo results with usable directions update the map. Duplicate channel results
+are suppressed. `[unk]` means an unrecognised word and does not update the belief.
+Recognition runs in a worker independently of plotting; the model is loaded before capture.
+A detected audio gap resets recognition so incomplete words cannot use mismatched audio.
+
+Defaults are permissive: `--speech-threshold 0.35 --bearing-threshold 0.15`.
+The update weight is speech confidence times direction confidence. These are heuristic
+scores, not calibrated probabilities. The likelihood is `L = (1-q) + q*G`; each update
+multiplies the previous predicted belief by L and normalises it. The colour scale shows
+belief relative to a uniform prior; the dashed line is the latest bearing. Press **R** to reset.
+A restricted `polo`/`[unk]` vocabulary can still misrecognise other words; lower thresholds
+increase false positives. Real voices and room acoustics need live validation.
+
+Without a live pose CSV, keep the board stationary. 0° points out of the USB edge; +90° is anticlockwise viewed
+from above. Use `--mic-yaw-deg` for board orientation, `--mic-xy X Y` for map position,
+and `--bearing-offset-deg` only for measured calibration bias. This viewer measures
+bearing, not distance. Optional live microphone pose support is described below.
+
+Checks: `python marco_audio/tools/test_polo_detection.py`. The optional `--speech-wav PATH`
+uses a mono int16 WAV saying "Polo. Polo. Hello there. Marco. Polo." to test the actual
+recognizer and viewer with simulated +90° microphone delays and deliberately slow plotting.
+
+#### Belief reliability and moving microphones
+
+The viewer retains its belief unchanged during silence, even for several minutes.
+Only a new accepted detection or pressing R changes it. This assumes the child stays
+near the last inferred location between calls. Update weight is capped at 0.8.
+A single compact group must contain at least 80% of accepted directional
+weight within 20° of a candidate; otherwise the bearing is rejected instead of averaging
+separated directions into a false centre. Reflections can still produce a consistent wrong
+bearing. One target is assumed; no speaker identity association is implemented.
+
+The fixed colour scale shows **belief divided by uniform prior**, with values above 20
+saturating. It does not rescale to make every observation look strong. The plot shows 'distance unknown' and approximate ±2-sigma boundaries (not calibrated
+coverage). The latest bearing overlay persists with the belief until another detection or R. Scores are labelled
+as scores, not accuracy probabilities. Real labelled room recordings are still required
+for confidence calibration and false-trigger assessment.
+
+Audio buffering is capped at one second. Older queued blocks reset recognition; final
+observations arriving more than 3 seconds after capture are discarded (`--max-age`).
+This rejects delayed processing; it does not expire evidence already in the map. ADC capture timestamps are mapped to Unix
+time, and observations from before an R reset cannot repopulate the cleared map.
+`--processed-delay-ms` compensates measured speech-channel lag relative to raw microphones:
+positive values select earlier raw samples. Default 0 remains unverified on your hardware.
+
+For a moving microphone, provide `--pose-csv PATH`. An external pose publisher must
+atomically replace this CSV with a rolling history covering at least the last 10 seconds:
+
+```text
+stamp_ms,x_m,y_m,yaw_rad
+```
+
+Timestamps must be Unix epoch milliseconds on the same synchronized computer clock;
+positions and yaw must describe the **microphone** in the map frame, including mounting
+extrinsics. The viewer interpolates at the detected word midpoint, with at most a 250 ms
+pose gap, and skips events with missing/stale poses. Do not also pass static mic pose flags.
+No ROS/odometry producer is launched automatically. Words with more than 10 cm translation or 10 degrees rotation between their start and
+end poses are rejected; this is a conservative guard, not within-word motion compensation.
+Keep motion slow or stop to listen. Without this option the board must remain
+stationary. Changing `--mic-yaw-deg` once is not live motion compensation.
+
 `live_doa.py` listens to the board all the time. For every clap or shout it prints the
 direction from each method (GCC-PHAT, GCC-PHAT robust, SRP-PHAT, plain cross-correlation)
 next to the chip's two estimates, with each method's confidence. It calls the same functions
@@ -294,6 +374,17 @@ click-like sounds all methods are within a few degrees. The simulation leaves ou
 mismatch, the board's case and table reflections, so real recordings decide.
 
 ## 10. ROS 2 nodes (`audio_node`, `speech_node`)
+
+To run the audio input to the fusion belief map, start `audio_node` and the robot's TF publishers, source the ROS workspace, then run this from the repository root:
+
+```bash
+python3 -m sensor_fusion.marco_audio_bridge
+ros2 topic echo /marco/fusion/audio_belief --once
+```
+
+The bridge uses the transform from the sound's frame (normally `mic_array_link`) to `map` at the sound onset. Mount the microphone level. The output is a JSON probability grid in a ROS `std_msgs/String`, with rows along map Y and columns along map X. This standalone node maintains an audio belief. A combined caller can reuse `sound_observation()` and `audio_likelihood()` with the microphone's map position and yaw, then pass that likelihood to the same filter update as its visual likelihood.
+
+The current audio node emits unclassified sounds, so the bridge accepts directions with confidence at least 0.5 by default. Other sound sources can affect the belief. Use `--ros-args -p accept_unclassified:=false` to require a `polo` keyword once the publisher supplies it. Use `--ros-args -p map_frame:=YOUR_FRAME` if the fusion grid is defined in a different fixed frame.
 
 ROS 2 is the software the robot's parts use to talk to each other. A **node** is one running
 program, a **topic** is a named channel, and a **message** is one item sent on a topic with fixed
