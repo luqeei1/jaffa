@@ -121,27 +121,27 @@ ros2 topic echo /marco/audio/sound_event
 
 Stop with Ctrl+C in Window 2.
 
-**Make Marco speak.** Window 1 must be running. The clips are placeholder beeps for now.
+**Make Marco speak.** Window 1 must be running. The clips are four lines spoken by a computer voice.
 
-**Window 2**, say "Marco" (two notes going up):
+**Window 2**, say "Marco!":
 
 ```
 ros2 topic pub --once /marco/speech/say std_msgs/msg/String "{data: marco}"
 ```
 
-**Window 2**, say "Polo" (two notes going down):
+**Window 2**, say "Polo!":
 
 ```
 ros2 topic pub --once /marco/speech/say std_msgs/msg/String "{data: polo}"
 ```
 
-**Window 2**, say "Found you" (three quick notes going up):
+**Window 2**, say "Found you!":
 
 ```
 ros2 topic pub --once /marco/speech/say std_msgs/msg/String "{data: found_you}"
 ```
 
-**Window 2**, say "Sleepy" (one long note sliding down):
+**Window 2**, say "I'm getting sleepy.":
 
 ```
 ros2 topic pub --once /marco/speech/say std_msgs/msg/String "{data: sleepy}"
@@ -646,9 +646,9 @@ self.say.publish(String(data="marco"))      # plays clips/marco.wav
 |---|---|
 | Direction of a clap | Measured in three clap tests at 1 m, 24 claps each. In the live test of 5 Nov 2026 the typical error was 1.0 degrees and the worst 4.4 degrees. Method and results: README, sections 6 to 8 |
 | Running on the Jetson | On Team Jaffa's Jetson Orin Nano (Ubuntu 22.04, ROS 2 Humble), 11 Nov 2026: the replay gave the same 24 answers as on a laptop, and the live microphone and the voice clips worked |
-| The words "marco" and "polo" | Added on 12 Nov 2026. Checked so far: silence, hiss and the 24 recorded claps are not reported as words. Not measured yet: how many spoken "Polo!"s it catches, and how often other speech is mistaken for one |
-| Direction of a spoken word | Not measured yet. A voice starts more softly than a clap, so expect lower confidence than for claps |
-| Marco's voice | The four clips are placeholder beeps until the real voice is recorded |
+| The words "marco" and "polo" | Added on 12 Nov 2026. Silence, hiss and the 24 recorded claps are not reported as words. First test on a real voice, 17 Nov 2026 (one speaker, 1 m, quiet room, on a laptop): 24 of 24 spoken "Polo!"s were caught. A minute of ordinary talk at normal volume was too quiet to count as a sound, so it was never checked for words; with the loudness limit lowered by 10 dB, 2 of 23 pieces of that talk were mistaken for "polo". Not measured yet: other voices, a noisy room, and the Jetson |
+| Direction of a spoken word | Measured on 17 Nov 2026 with 24 spoken "Polo!"s at 1 m: the typical error was 5.1 degrees and the worst 34 degrees, and 7 of the 24 were more than 10 degrees off. That is much less accurate than for claps, because a voice starts more softly than a clap. Listening for longer after the start of a word has not been tried yet |
+| Marco's voice | Four spoken clips (marco, polo, found_you, sleepy), made on 17 Nov 2026 with the Piper text-to-speech program and its `en_US-bryce-medium` voice. Not yet played on the Jetson |
 
 # Where to read more
 

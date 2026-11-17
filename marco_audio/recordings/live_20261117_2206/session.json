@@ -1,0 +1,29 @@
+{
+  "mode": "live",
+  "device": 14,
+  "fs": 16000,
+  "channels": 6,
+  "dtype": "float32",
+  "trigger_db": 20.0,
+  "min_db": -70.0,
+  "chip": true,
+  "window_ms": [
+    5.0,
+    2.0
+  ],
+  "distance_m": null,
+  "note": "mic check: board 90 cm, mouth 175 cm, wall 51 cm",
+  "guide": false,
+  "angles": null,
+  "claps": 3,
+  "started": "2026-11-17T22:06:33",
+  "method": "board rotated on the printed guide; source fixed at the guide's 0 deg side",
+  "stopped": "2026-11-17T22:08:50",
+  "seconds": 136.72,
+  "t_audio0_perf": 25122.8898001,
+  "overflows": 0,
+  "chip_errors": 0,
+  "floor_dbfs": -92.24439987841458,
+  "events": 7,
+  "not_analysed_at_quit": 0
+}

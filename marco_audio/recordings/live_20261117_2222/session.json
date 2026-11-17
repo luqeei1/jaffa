@@ -1,0 +1,29 @@
+{
+  "mode": "live",
+  "device": 14,
+  "fs": 16000,
+  "channels": 6,
+  "dtype": "float32",
+  "trigger_db": 20.0,
+  "min_db": -70.0,
+  "chip": true,
+  "window_ms": [
+    5.0,
+    2.0
+  ],
+  "distance_m": null,
+  "note": "60 s quiet then 60 s ordinary talk, no game words",
+  "guide": false,
+  "angles": null,
+  "claps": 3,
+  "started": "2026-11-17T22:23:00",
+  "method": "board rotated on the printed guide; source fixed at the guide's 0 deg side",
+  "stopped": "2026-11-17T22:25:19",
+  "seconds": 139.34,
+  "t_audio0_perf": 26109.8054837,
+  "overflows": 0,
+  "chip_errors": 1,
+  "floor_dbfs": -102.07657204841746,
+  "events": 0,
+  "not_analysed_at_quit": 0
+}

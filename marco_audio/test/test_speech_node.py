@@ -11,7 +11,9 @@ Run:   python test/test_speech_node.py        (from the marco_audio folder; take
 """
 import importlib
 import sys
+import tempfile
 import time
+import wave
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -160,8 +162,21 @@ check("board found in aplay -l", sp.find_board_card(JETSON) == "plughw:CARD=Arra
 check("no board -> None", sp.find_board_card("aplay: device_list:274: no soundcards found...") is None)
 check("other card by name", sp.find_board_card(JETSON, ("hdmi",)) == "plughw:CARD=HDA,DEV=3")
 check("player given by hand is used as typed", sp.choose_player("aplay -q -D plughw:2,0") == ["aplay", "-q", "-D", "plughw:2,0"])
-check("clip length read from the file", abs(sp.clip_seconds(HERE.parent / "clips" / "sleepy.wav") - 1.0) < 0.01
-      and sp.clip_seconds(HERE / "nothing.wav") == 0.0)
+# Clip length: a file written here with a known length (0.5 s), and a file that does not exist.
+# The real clips are not used for this, so the test does not break when a clip is re-recorded.
+with tempfile.TemporaryDirectory() as tmp:
+    known = Path(tmp) / "known.wav"
+    with wave.open(str(known), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(22050)
+        w.writeframes(b"\x00\x00" * 11025)              # 11025 samples at 22050 Hz = 0.5 s
+    check("clip length read from the file", abs(sp.clip_seconds(known) - 0.5) < 0.001
+          and sp.clip_seconds(HERE / "nothing.wav") == 0.0)
+# The four real clips: each must be an ordinary .wav the node can read, and a sensible length.
+lengths = {n: sp.clip_seconds(HERE.parent / "clips" / f"{n}.wav") for n in ("marco", "polo", "found_you", "sleepy")}
+check("the four voice clips can be read and last 0.2 to 5 s", all(0.2 <= s <= 5.0 for s in lengths.values()),
+      ", ".join(f"{n} {s:.2f} s" for n, s in lengths.items()))
 
 # 13. The two nodes together: a sound that starts while speech_node says "speaking" is muted --
 audio = importlib.import_module("marco_audio.audio_node")
