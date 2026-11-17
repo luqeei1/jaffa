@@ -1,0 +1,26 @@
+Replay of live_20261117_2213, window 5 ms before to 30 ms after the onset
+Labelled sounds used: 24 (latest take of each angle); all sounds heard: 35
+
+Error = estimated - true direction. 'Offset' = the average signed error: if it is the
+same at every angle, the clap spot (not the method) is off the 0 deg line.
+
+method                       n  offset median|e| worst|e| >10 deg  median|e| after offset
+GCC-PHAT                    24   +4.2°      5.5°   110.1°       4                    3.0°
+GCC-PHAT robust             24   +0.3°      5.1°    15.8°       3                    5.1°
+SRP-PHAT                    24   -0.3°      3.4°    14.3°       2                    3.7°
+Plain cross-correlation     24   +3.9°      4.7°    59.0°       8                    8.0°
+Chip DOA_VALUE              24   -0.5°      9.0°    29.0°       8                    8.5°
+Chip free-running beam      24   -3.9°      7.5°    28.8°       8                   10.0°
+
+Average signed error per angle (is the offset the same everywhere?):
+angle         GCC    robust       SRP     xcorr
+    0        +6.1      +4.6      +3.8     -10.5
+   45        -0.3      +0.4      -0.5      +8.1
+   90       -15.7     -13.2     -12.3      +3.4
+  135        +3.7      +3.7      +4.5      +3.0
+  180        -0.7      -0.7      -0.7     +16.5
+  225       +38.6      +5.5      +2.8     +22.7
+  270        +0.7      +0.7      -0.4     -13.1
+  315        +1.6      +1.6      +0.6      +0.8
+
+GCC-PHAT within 5 deg on 10 of 24 sounds.
