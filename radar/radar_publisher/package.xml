@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>radar_publisher</name>
+  <version>0.1.0</version>
+  <description>Publishes the C4002 mmWave radar's target distance and energy on ROS 2 topics.</description>
+  <maintainer email="MAadinP@users.noreply.github.com">MAadinP</maintainer>
+  <license>Coursework, licence not yet chosen</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <!-- needed by launch/radar_publisher.launch.py -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <!-- The C4002 driver library (c4002) is installed with pip; it is only needed when use_dummy is false. -->
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
