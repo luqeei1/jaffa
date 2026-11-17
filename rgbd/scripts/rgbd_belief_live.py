@@ -11,8 +11,6 @@ Usage (from the rgbd directory's parent):
 """
 
 import argparse
-import sys
-from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -185,11 +183,9 @@ def update_from_rgbd(prior, frame_evidence):
 def run_rgbd(bag=None, model_path="yolo26n.pt", confidence=0.3,
              robot_xy=ROBOT_XY, robot_yaw=ROBOT_YAW):
     """Run the RGB-D detector and update/display the map for each frame."""
-    rgbd_dir = Path(__file__).resolve().parent / "rgbd"
-    sys.path.insert(0, str(rgbd_dir))
     try:
-        from core import DetectorConfig, PersonDetector, Pipeline
-        from sources import RealSenseSource
+        from rgbd.core import DetectorConfig, PersonDetector, Pipeline
+        from rgbd.sources import RealSenseSource
     except ImportError as exc:
         raise RuntimeError(
             "RGB-D dependencies are unavailable; install rgbd/requirements.txt"

@@ -8,7 +8,10 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 
-from core.types import Intrinsics
+if __package__ == "rgbd.sources":
+    from ..core.types import Intrinsics
+else:
+    from core.types import Intrinsics
 
 
 def intrinsics_from_rs(rs_intr):

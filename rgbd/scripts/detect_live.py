@@ -20,9 +20,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from core import POSITION, DetectorConfig, PersonDetector, Pipeline, ray_sigmas, shrunk_region
-from scripts.view import colorize_depth
-from sources import RealSenseSource
+if __package__ == "rgbd.scripts":
+    from ..core import POSITION, DetectorConfig, PersonDetector, Pipeline, ray_sigmas, shrunk_region
+    from ..sources import RealSenseSource
+    from .view import colorize_depth
+else:
+    from core import POSITION, DetectorConfig, PersonDetector, Pipeline, ray_sigmas, shrunk_region
+    from scripts.view import colorize_depth
+    from sources import RealSenseSource
 
 WINDOW = "Marco person detection"
 SNAPSHOT_DIR = Path("snapshots")
@@ -92,7 +97,41 @@ def main():
     parser.add_argument("--bag", help="play back this recording (.db3 or .bag) instead of the live camera")
     parser.add_argument("--print", dest="print_dets", action="store_true",
                         help="print the whole FrameEvidence every frame, including empty frames")
+    camera_pose = parser.add_mutually_exclusive_group()
+    camera_pose.add_argument("--fusion-camera-to-map", type=Path,
+                             help="fixed camera optical-to-map 4x4 .npy matrix")
+    camera_pose.add_argument("--fusion-camera-to-base", type=Path,
+                             help="moving camera optical-to-robot-base 4x4 .npy matrix")
+    parser.add_argument("--fusion-poses", type=Path,
+                        help="pose CSV on the recording clock (stamp_ms,x_m,y_m,yaw_rad)")
+    parser.add_argument("--fusion-max-pose-gap-ms", type=float, default=250,
+                        help="largest pose interpolation gap in milliseconds (default: 250)")
     args = parser.parse_args()
+
+    if args.fusion_camera_to_base and not (args.bag and args.fusion_poses):
+        parser.error("--fusion-camera-to-base requires --bag and --fusion-poses")
+    if args.fusion_poses and not args.fusion_camera_to_base:
+        parser.error("--fusion-poses requires --fusion-camera-to-base")
+
+    fusion = None
+    pose_replay = None
+    transform_path = args.fusion_camera_to_map or args.fusion_camera_to_base
+    if transform_path is not None:
+        if __package__ != "rgbd.scripts":
+            parser.error("run fusion from the repository root with python -m rgbd.scripts.detect_live")
+        from sensor_fusion.sensor_fusion import (
+            BeliefMapFilter, rgbd_position_observation, rigid_transform, visual_likelihood,
+        )
+
+        from sensor_fusion.pose_replay import PoseReplay
+
+        try:
+            camera_transform = rigid_transform(np.load(transform_path, allow_pickle=False))
+            if args.fusion_poses:
+                pose_replay = PoseReplay(args.fusion_poses, args.fusion_max_pose_gap_ms)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        fusion = BeliefMapFilter()
 
     config = DetectorConfig(model_path=args.model, conf=args.conf, imgsz=args.imgsz)
     print(f"Loading {config.model_path} (conf={config.conf}, imgsz={config.imgsz})...")
@@ -123,6 +162,23 @@ def main():
                 det_ms = smooth(det_ms, pipeline.last_detect_ms)
                 if args.print_dets:
                     print_evidence(evidence)
+                if fusion is not None:
+                    camera_to_map = camera_transform
+                    if pose_replay is not None:
+                        base_to_map = pose_replay.base_to_map(evidence.stamp_ms)
+                        camera_to_map = None if base_to_map is None else base_to_map @ camera_transform
+                    visible = (
+                        rgbd_position_observation(evidence, camera_to_map)
+                        if camera_to_map is not None else None
+                    )
+                    if visible is None:
+                        fusion.update()
+                        reason = "no pose at capture" if camera_to_map is None else "no unique 3D detection"
+                        print(f"frame {frame_number}  fusion: prediction only ({reason})")
+                    else:
+                        fusion.update(visual=visual_likelihood(visible.position, visible.covariance))
+                        x, y, _ = fusion.estimate()
+                        print(f"frame {frame_number}  fusion: map x {x:.2f} m  y {y:.2f} m")
 
                 now = time.perf_counter()
                 loop_fps = smooth(loop_fps, 1.0 / max(now - last_t, 1e-6))

@@ -37,7 +37,27 @@ def main():
                         help="measured processed-channel lag behind raw channels; positive shifts raw window earlier")
     parser.add_argument("--pose-csv", type=Path,
                         help="live microphone map poses: stamp_ms (Unix epoch),x_m,y_m,yaw_rad")
+    parser.add_argument("--rounds", action="store_true", help="call Marco, accept one Polo, then wait for M")
+    parser.add_argument("--marco-clip", type=Path, default=Path(__file__).resolve().parents[1] / "clips/marco_spoken.wav")
+    parser.add_argument("--output-device", type=int, help="speaker device index (default: ReSpeaker on input host API)")
+    parser.add_argument("--reply-seconds", type=float, default=10.0)
+    parser.add_argument("--rgbd-camera-to-map", type=Path,
+                        help="enable live RealSense with a fixed optical-to-map 4x4 .npy transform")
+    parser.add_argument("--rgbd-model", help="optional path to RGB-D YOLO weights")
+    parser.add_argument("--rgbd-interval", type=float, default=1.5,
+                        help="minimum seconds between RGB-D inference starts (default: 1.5)")
+    parser.add_argument("--save-map", type=Path, help="save final belief plot to this PNG on exit")
     args = parser.parse_args()
+    if not math.isfinite(args.rgbd_interval) or args.rgbd_interval <= 0:
+        parser.error("--rgbd-interval must be positive and finite")
+    if args.rgbd_camera_to_map and (args.pose_csv or args.sound):
+        parser.error("Combined RGB-D mode requires a stationary setup and Polo recognition")
+    if args.rounds and args.sound:
+        parser.error("--rounds requires Polo recognition; omit --sound")
+    if not math.isfinite(args.reply_seconds) or args.reply_seconds <= 0:
+        parser.error("--reply-seconds must be positive and finite")
+    if args.rounds and not args.marco_clip.is_file():
+        parser.error("Provide a spoken Marco WAV using --marco-clip PATH")
     if not math.isfinite(args.max_age) or args.max_age <= 0:
         parser.error("maximum detection age must be positive and finite")
     if not math.isfinite(args.processed_delay_ms) or abs(args.processed_delay_ms) > 1000:
@@ -59,24 +79,54 @@ def main():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from sensor_fusion.pose_replay import PoseReplay
-    from sensor_fusion.sensor_fusion import AudioObservation, BeliefMapFilter, audio_likelihood, xs, ys
+    from sensor_fusion.sensor_fusion import AudioObservation, BeliefMapFilter, audio_likelihood, audio_sector_probability, xs, ys
+
+    if args.rgbd_camera_to_map:
+        import numpy as np
+        from sensor_fusion.sensor_fusion import rigid_transform, rgbd_position_observation, visual_likelihood
+        try:
+            camera_to_map = rigid_transform(np.load(args.rgbd_camera_to_map, allow_pickle=False))
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
 
     if not args.sound:
         if not (args.model / "am" / "final.mdl").is_file():
             parser.error("--model must be the extracted Vosk folder containing am/final.mdl")
-        try:
-            from vosk import Model, SetLogLevel
-        except ImportError:
-            parser.error("Install Vosk first: python -m pip install vosk")
+        from keyword_spotter import KeywordSpotter
         from polo_detection import PoloDetector
-        SetLogLevel(-1)
-        print(f"Loading Vosk model: {args.model}", flush=True)
-        model = Model(str(args.model))
+        print(f"Loading Ahmad's keyword spotter: {args.model}", flush=True)
+        try:
+            spotter = KeywordSpotter(str(args.model), min_conf=args.speech_threshold)
+        except (ImportError, FileNotFoundError) as exc:
+            parser.error(str(exc))
 
     def new_listener():
         return (Listener(Labels()) if args.sound else
-                PoloDetector(model, args.speech_threshold, args.bearing_threshold, args.debug_speech,
-                             processed_delay_ms=args.processed_delay_ms))
+                PoloDetector(spotter.model, args.speech_threshold, args.bearing_threshold, args.debug_speech,
+                             processed_delay_ms=args.processed_delay_ms, spotter=spotter))
+
+    from response_window import ResponseWindow, find_output, play_clip
+    cycle = ResponseWindow(args.reply_seconds, grace=args.max_age) if args.rounds else None
+    if cycle:
+        try:
+            output_device = args.output_device if args.output_device is not None else find_output(sd, args.device)
+            sd.query_devices(output_device, 'output')
+        except (ValueError, sd.PortAudioError) as exc:
+            parser.error(str(exc))
+        print(f"Marco output device: {output_device}")
+    requests = queue.SimpleQueue()
+    ready = threading.Event()
+    inference_lock = threading.Lock()
+    camera_ready = threading.Event()
+    detector_ready = threading.Event()
+    if not args.rgbd_camera_to_map:
+        camera_ready.set()
+
+    def request_round():
+        if cycle and ready.is_set() and camera_ready.is_set():
+            token = cycle.request()
+            if token is not None:
+                requests.put(token)
 
     # Load recognizers before starting capture, not while audio queues up.
     listener = new_listener()
@@ -86,7 +136,13 @@ def main():
     if not (xs[0] <= mic_xy[0] <= xs[-1] and ys[0] <= mic_xy[1] <= ys[-1]):
         parser.error("--mic-xy must lie inside the belief map")
     mic_yaw = math.radians(args.mic_yaw_deg)
-    fig, ax = plt.subplots(figsize=(9, 6), layout="constrained")
+    if args.rgbd_camera_to_map:
+        fig, (camera_ax, ax) = plt.subplots(1, 2, figsize=(15, 6), layout="constrained")
+        preview = camera_ax.imshow(np.zeros((480, 640, 3), dtype=np.uint8))
+        camera_ax.set_title("Starting RealSense and person detector…")
+        camera_ax.axis("off")
+    else:
+        fig, ax = plt.subplots(figsize=(9, 6), layout="constrained")
     grid = ax.imshow(fusion.belief * fusion.belief.size, origin="lower", extent=(xs[0], xs[-1], ys[0], ys[-1]),
                      vmin=0, vmax=20)
     fig.colorbar(grid, ax=ax, extend="max", label="Belief / uniform prior (fixed scale; >=20 saturates)")
@@ -107,15 +163,36 @@ def main():
     age_label = ax.text(.01, .99, "No observation | distance unknown", transform=ax.transAxes,
                         va="top", color="white", bbox={"facecolor": "black", "alpha": .6})
     last_capture = None
+    last_visual = None
+    last_visual_stamp = None
+    visual_factor = 1.0
+    if args.rgbd_camera_to_map:
+        from sensor_fusion.sensor_fusion import normalise
+
+    def displayed_belief():
+        if args.rgbd_camera_to_map:
+            return normalise(fusion.belief * visual_factor)
+        return fusion.belief
+    visual_marker = None
+    if args.rgbd_camera_to_map:
+        visual_marker, = ax.plot([], [], "mo", fillstyle="none", label="Latest RGB-D position")
     reset_at = time.time()
     ax.set(xlabel="Map X (m) · 0°", ylabel="Map Y (m) · +90°",
            title="Waiting for a sound" if args.sound else "Waiting for Polo (Vosk)")
     ax.legend(loc="lower center", bbox_to_anchor=(0.5, -0.24), ncols=2)
     def reset_map(event):
-        nonlocal last_capture, reset_at
+        nonlocal last_capture, last_visual, last_visual_stamp, reset_at, visual_factor
+        if event.key == "m":
+            request_round()
         if event.key == "r":
+            if cycle:
+                cycle.cancel()
             reset_at = time.time()
             last_capture = None
+            last_visual = last_visual_stamp = None
+            visual_factor = 1.0
+            if visual_marker is not None:
+                visual_marker.set_data([], [])
             fusion.reset()
             grid.set_data(fusion.belief * fusion.belief.size)
             bearing_line.set_data([], [])
@@ -128,6 +205,8 @@ def main():
     print("Keep quiet for one second, then " + (
         "clap or call out. All sounds are accepted." if args.sound else
         "say Polo normally and pause for a second. Only recognised Polo updates the map."))
+    if cycle:
+        print("First Marco plays when all enabled sensors are ready. M = next round; R = cancel and clear belief.")
     print("0 degrees = USB edge, +90 = left viewed from above. Keep the board fixed. R resets the map.")
     print("Scores and angular spread are uncalibrated. Processed/raw delay must be measured on hardware.")
     if args.pose_csv:
@@ -143,7 +222,10 @@ def main():
         try:
             # PortAudio ADC time and currentTime share a clock; map to Unix time.
             captured = time.time() - (time_info.currentTime - time_info.inputBufferAdcTime)
-            blocks.put_nowait((samples.copy(), captured))
+            token = cycle.capture_id(captured) if cycle else 0
+            if token is None:
+                return
+            blocks.put_nowait((samples.copy(), captured, token))
         except queue.Full:
             dropped.set()
 
@@ -152,8 +234,32 @@ def main():
         # Recognition and bearing analysis never wait for plot redraws.
         origin = None
         sample_count = 0
+        active_token = None
         try:
             while not stop.is_set():
+                if not requests.empty():
+                    token = requests.get()
+                    if cycle.current(token):
+                        try:
+                            # Let any in-flight inference finish before calling Marco.
+                            with inference_lock:
+                                pass
+                            if stop.is_set() or not cycle.current(token):
+                                continue
+                            play_clip(args.marco_clip, output_device,
+                                      lambda: stop.is_set() or not cycle.current(token))
+                            if not stop.is_set():
+                                cycle.played(token, time.time())
+                        except Exception as exc:
+                            cycle.failed(token, "Playback failed; M to retry")
+                            results.put(f"Marco playback failed: {exc}")
+                    # All queued samples precede playback completion and are ineligible.
+                    while not blocks.empty():
+                        try:
+                            blocks.get_nowait()
+                        except queue.Empty:
+                            break
+                    origin, sample_count, active_token = None, 0, None
                 if dropped.is_set():
                     while True:
                         try:
@@ -166,9 +272,22 @@ def main():
                     listener = new_listener()
                     results.put("Audio gap: restarted detection; discarded incomplete audio.")
                 try:
-                    samples, captured = blocks.get(timeout=0.1)
+                    samples, captured, token = blocks.get(timeout=0.1)
                 except queue.Empty:
                     continue
+                if cycle and token == -1:
+                    listener.listener.feed(samples)  # room calibration only; no Vosk outside a round
+                    if listener.listener.warmed_up:
+                        ready.set()
+                    continue
+                if cycle and not cycle.current(token):
+                    continue
+                if token != active_token:
+                    floor = None if args.sound else listener.listener.detector.floor
+                    listener = new_listener()
+                    if floor is not None:
+                        listener.listener.detector.floor = floor
+                    origin, sample_count, active_token = None, 0, token
                 if time.time() - captured > 1.0:
                     dropped.set()
                     continue
@@ -181,6 +300,7 @@ def main():
                 sample_count += len(samples)
                 for event in listener.feed(samples):
                     offset = event['sample'] / FS if args.sound else (event['start'] + event['end']) / 2
+                    event['round'] = token
                     event['captured'] = origin + offset
                     event['capture_start'] = origin + (offset if args.sound else event['start'])
                     event['capture_end'] = origin + (offset if args.sound else event['end'])
@@ -188,12 +308,95 @@ def main():
         except Exception as exc:
             results.put(exc)
 
+    visual_results = queue.Queue(maxsize=1)
+    inference_frames = queue.Queue(maxsize=1)
+    preview_frames = queue.Queue(maxsize=1)
+    latest_boxes = ((), None)
+
+    def put_latest(slot, value):
+        try:
+            slot.get_nowait()
+        except queue.Empty:
+            pass
+        slot.put_nowait(value)
+
+    def capture_rgbd():
+        try:
+            from rgbd.sources import RealSenseSource
+
+            with RealSenseSource(warmup_frames=0) as src:
+                print("RealSense connected. Keep both sensors fixed for the combined map.", flush=True)
+                next_preview = 0.0
+                while not stop.is_set():
+                    frame = src.read()
+                    captured = time.time()
+                    if frame is None:
+                        raise RuntimeError("No frame returned by the live camera")
+                    put_latest(inference_frames, (captured, frame, src.intrinsics))
+                    now = time.monotonic()
+                    if now >= next_preview:
+                        put_latest(preview_frames, frame[0])
+                        camera_ready.set()
+                        next_preview = now + .067
+        except Exception as exc:
+            results.put(RuntimeError(f"RGB-D capture failed: {exc}"))
+
+    def analyse_rgbd():
+        nonlocal latest_boxes
+        try:
+            import torch
+            from rgbd.core import DetectorConfig, PersonDetector, Pipeline
+
+            # Leave CPU capacity for Vosk, bearing estimation and the GUI.
+            torch.set_num_threads(2)
+            config = DetectorConfig(imgsz=416)
+            if args.rgbd_model:
+                config.model_path = args.rgbd_model
+            pipeline = Pipeline(PersonDetector(config))
+            while not stop.is_set():
+                if cycle and not cycle.is_idle():
+                    stop.wait(.05)
+                    continue
+                try:
+                    captured, frame, intrinsics = inference_frames.get(timeout=.1)
+                except queue.Empty:
+                    continue
+                color, depth, stamp_ms, number = frame
+                with inference_lock:
+                    if cycle and not cycle.is_idle():
+                        continue
+                    started = time.monotonic()
+                    evidence = pipeline.process(color, depth, intrinsics, stamp_ms, number)
+                latest_boxes = (evidence.detections, pipeline.config.localise)
+                visible = rgbd_position_observation(evidence, camera_to_map)
+                put_latest(visual_results, (captured, visible))
+                if not detector_ready.is_set():
+                    detector_ready.set()
+                    print("RGB-D detector ready.", flush=True)
+                stop.wait(max(0.0, args.rgbd_interval - (time.monotonic() - started)))
+        except Exception as exc:
+            results.put(RuntimeError(f"RGB-D inference failed: {exc}"))
+
+    camera_worker = inference_worker = None
+    if args.rgbd_camera_to_map:
+        from rgbd.scripts.detect_live import draw_detections
+
+        camera_worker = threading.Thread(target=capture_rgbd, daemon=True)
+        inference_worker = threading.Thread(target=analyse_rgbd, daemon=True)
+        camera_worker.start()
+        inference_worker.start()
     worker = threading.Thread(target=analyse, daemon=True)
     worker.start()
     try:
         with sd.InputStream(device=args.device, channels=ma.N_CHANNELS, samplerate=FS,
                             dtype="float32", blocksize=320, callback=capture):
+            auto_requested = False
             while plt.fignum_exists(fig.number):
+                if cycle:
+                    cycle.status(time.time())
+                    if ready.is_set() and camera_ready.is_set() and not auto_requested:
+                        request_round()
+                        auto_requested = True
                 while not results.empty():
                     event = results.get()
                     if isinstance(event, Exception):
@@ -249,7 +452,10 @@ def main():
                         observation, robot_xy=mic_xy, robot_yaw=mic_yaw,
                         reliability=weight, min_confidence=args.bearing_threshold,
                     )
-                    belief, _ = fusion.update(audio=likelihood)
+                    if cycle and not cycle.accept(event['round'], event['capture_start'], event['capture_end'], time.time()):
+                        continue
+                    fusion.update(audio=likelihood ** .5 if camera_worker else likelihood)
+                    sector_probability = audio_sector_probability(displayed_belief(), observation, mic_xy, mic_yaw)
                     last_capture = captured
                     mic_marker.set_data([mic_xy[0]], [mic_xy[1]])
                     for radians, label in degree_labels:
@@ -263,22 +469,74 @@ def main():
                         [mic_xy[0], mic_xy[0] + 2.35 * math.cos(map_bearing)],
                         [mic_xy[1], mic_xy[1] + 2.35 * math.sin(map_bearing)],
                     )
-                    title = (f"{'Sound' if args.sound else 'Polo'} · map bearing {angle:+.0f}° ± {math.degrees(std):.0f}°\n"
+                    source = "Sound" if args.sound else "Polo"
+                    if last_visual is not None:
+                        source = "Combined belief · Polo"
+                    title = (f"{source} · map bearing {angle:+.0f}° ± {math.degrees(std):.0f}°\n"
                              f"Direction score {confidence:.0%} · update weight {weight:.0%}")
                     if not args.sound:
                         title += f" · speech score {speech_confidence:.0%}"
-                    title += "\nHeatmap = accumulated belief; dashed line = latest bearing; R = reset"
+                    title += (f"\nBelief in ±{math.degrees(2 * std):.0f}° sector: {sector_probability:.0%}"
+                              " (model estimate) · R = reset")
                     ax.set_title(title)
                     print(f"{title} (raw board bearing {raw_angle:+.0f}°)", flush=True)
-                grid.set_data(fusion.belief * fusion.belief.size)
-                age_label.set_text(("No observation" if last_capture is None else "Belief retained until next detection or R")
-                                   + " | distance unknown")
+                if camera_worker:
+                    try:
+                        color = preview_frames.get_nowait().copy()
+                        detections, loc_config = latest_boxes
+                        if loc_config is not None:
+                            draw_detections(color, detections, loc_config)
+                        preview.set_data(color[:, :, ::-1])
+                        if cycle and not cycle.is_idle():
+                            camera_ax.set_title("RealSense colour · detection paused for Polo")
+                        elif not detector_ready.is_set():
+                            camera_ax.set_title("RealSense colour · starting person detector")
+                        else:
+                            camera_ax.set_title("RealSense colour · latest detections")
+                    except queue.Empty:
+                        pass
+                    try:
+                        visual_stamp, visible = visual_results.get_nowait()
+                    except queue.Empty:
+                        visible = None
+                    if visible is not None and fresh_capture(
+                        visual_stamp, time.time(), reset_at, args.max_age, last_visual_stamp
+                    ):
+                        x, y = visible.position[:2]
+                        if xs[0] <= x <= xs[-1] and ys[0] <= y <= ys[-1]:
+                            covariance = visible.covariance + np.diag([.20**2, .20**2, 0])
+                            likelihood = visual_likelihood(visible.position, covariance)
+                            weight = float(np.clip(visible.confidence, 0, .65))
+                            if np.isfinite(weight) and weight > 0:
+                                # Replace the previous correlated camera sample so a
+                                # stationary person can refresh the map without piling up evidence.
+                                visual_factor = ((1 - weight) + weight * likelihood / likelihood.mean()) ** .5
+                                visual_marker.set_data([x], [y])
+                                last_visual, last_visual_stamp = (x, y), visual_stamp
+                                ax.set_title("Combined belief · latest update: RGB-D" if last_capture is not None
+                                             else "RGB-D belief · waiting for Polo")
+                                print(f"RGB-D update: ({x:.2f}, {y:.2f}) m · reliability {weight:.0%}", flush=True)
+                grid.set_data(displayed_belief() * fusion.belief.size)
+                age_label.set_text((cycle.status(time.time()) if cycle else "No observation" if last_capture is None else "Belief retained until next detection or R")
+                                   + (" | audio measures bearing only" if camera_worker else " | distance unknown"))
+                if not camera_ready.is_set():
+                    age_label.set_text("Waiting for first RealSense frame")
+                elif cycle and not ready.is_set():
+                    age_label.set_text("Calibrating microphone")
                 plt.pause(0.05)
     except KeyboardInterrupt:
         pass
     finally:
         stop.set()
+        if cycle:
+            cycle.cancel()
         worker.join(timeout=2)
+        if camera_worker:
+            camera_worker.join(timeout=6)
+            inference_worker.join(timeout=2)
+        if args.save_map:
+            fig.savefig(args.save_map)
+            print(f"Saved belief plot to {args.save_map}", flush=True)
         plt.close(fig)
 
 

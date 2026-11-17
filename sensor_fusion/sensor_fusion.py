@@ -245,7 +245,12 @@ def visual_likelihood(position_xyz, covariance_xyz):
 # ------------------------------ Audio model -------------------------------
 
 def audio_likelihood(obs, robot_xy=ROBOT_XY, robot_yaw=ROBOT_YAW, *, reliability=None, min_confidence=0.4):
-    """Bearing-only likelihood: high probability along a directional wedge."""
+    """Bearing likelihood ratio: normalized angular Gaussian vs uniform clutter.
+
+    G has angular mean one, so mixing (1-q) + q*G does not dilute a
+    narrow, reliable bearing merely because most angles are outside its wedge.
+    This adds no range measurement and is applied once per accepted event.
+    """
     if obs is None or not (obs.keyword_detected or obs.unclassified) or obs.confidence < min_confidence:
         return np.ones_like(XX), False
 
@@ -256,13 +261,28 @@ def audio_likelihood(obs, robot_xy=ROBOT_XY, robot_yaw=ROBOT_YAW, *, reliability
     sigma = max(obs.std_rad, np.deg2rad(2.0))
     likelihood = np.exp(-0.5 * (angular_error / sigma)**2)
 
-    # At the microphone the bearing is undefined. Marginalise over all angles.
+    # Divide the angular Gaussian density by uniform angular density 1/(2*pi).
     angular_mean = sigma / math.sqrt(2 * math.pi) * math.erf(math.pi / (math.sqrt(2) * sigma))
-    likelihood[np.hypot(XX - robot_xy[0], YY - robot_xy[1]) < 0.15] = angular_mean
+    likelihood /= angular_mean
+    # At the microphone there is no defined bearing; marginalised evidence is neutral.
+    likelihood[np.hypot(XX - robot_xy[0], YY - robot_xy[1]) < 0.15] = 1.0
     if reliability is None:
-        reliability = obs.confidence if obs.unclassified else 1.0
+        reliability = obs.confidence
+    if not np.isfinite(reliability) or not 0 <= reliability <= 1:
+        raise ValueError('audio reliability must be finite and in [0, 1]')
     likelihood = (1.0 - reliability) + reliability * likelihood
     return np.maximum(likelihood, 1e-6), True
+
+
+def audio_sector_probability(belief, obs, robot_xy=ROBOT_XY, robot_yaw=ROBOT_YAW):
+    """Model belief mass within +/-2 sigma of a bearing, at any distance.
+
+    This is a summary of the grid, not a calibrated detection confidence.
+    """
+    angles = np.arctan2(YY - robot_xy[1], XX - robot_xy[0])
+    inside = np.abs(wrap_angle(angles - robot_yaw - obs.bearing_rad)) <= min(np.pi, 2 * obs.std_rad)
+    inside &= np.hypot(XX - robot_xy[0], YY - robot_xy[1]) >= 0.15
+    return float(np.sum(np.asarray(belief)[inside]))
 
 
 # ------------------------------ Radar model -------------------------------

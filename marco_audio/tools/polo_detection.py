@@ -58,10 +58,17 @@ class PoloDetector:
     hypothesis and the second processed channel cannot update the map twice.
     """
     def __init__(self, model, speech_threshold=0.35, bearing_threshold=0.15, debug=False,
-                 processed_delay_ms=0.0):
-        from vosk import KaldiRecognizer
-        self.recognizers = [KaldiRecognizer(model, FS, json.dumps(['polo', '[unk]']))
-                            for _ in range(2)]
+                 processed_delay_ms=0.0, spotter=None):
+        self.spotter = spotter
+        self.pending = []
+        if spotter is None:
+            from vosk import KaldiRecognizer
+            self.recognizers = [KaldiRecognizer(model, FS, json.dumps(['polo', '[unk]']))
+                                for _ in range(2)]
+        else:
+            from live_doa import Listener, Labels
+            self.listener = Listener(Labels())
+            self.recognizers = []
         for recognizer in self.recognizers:
             recognizer.SetWords(True)
         self.buffer = np.zeros((20 * FS, 6), dtype=np.float32)
@@ -110,11 +117,49 @@ class PoloDetector:
             raise ValueError('Feed audio in blocks shorter than 20 seconds')
         self.buffer[(self.n + np.arange(len(samples))) % len(self.buffer)] = samples
         self.n += len(samples)
+        if self.spotter is not None:
+            self.pending.extend(self.listener.feed(samples))
+            return self._release_keywords()
         events = []
         for channel, recognizer in enumerate(self.recognizers):
             pcm = (np.clip(samples[:, channel], -1, 1) * 32767).astype('<i2').tobytes()
             if recognizer.AcceptWaveform(pcm):
                 events.extend(self.process_result(json.loads(recognizer.Result()), channel))
+        return events
+
+    def _release_keywords(self):
+        """Use Ahmad's onset gating, normalization, and Marco/Polo vocabulary.
+
+        Accepted word timestamps still select the raw samples for the speech bearing.
+        """
+        from keyword_spotter import PRE_S, POST_S, EARLY_S, LATE_S
+        events = []
+        while self.pending and self.n >= self.pending[0]['sample'] + int(POST_S * FS):
+            onset = self.pending.pop(0)['sample']
+            a, b = max(0, onset - int(PRE_S * FS)), onset + int(POST_S * FS)
+            if a < self.n - len(self.buffer):
+                continue
+            block = self.buffer[np.arange(a, b) % len(self.buffer)]
+            answers = [(channel, self.spotter.spot(block[:, channel], (onset - a) / FS))
+                       for channel in (1, 0)]
+            # Prefer the best accepted Polo, rather than whichever channel is evaluated first.
+            answers.sort(key=lambda entry: entry[1]['conf'], reverse=True)
+            for channel, answer in answers:
+                if self.debug:
+                    print(f"Ahmad spotter ch{channel}: {answer['heard'] or '[no words]'}", flush=True)
+                if answer['keyword'] != 'polo':
+                    continue
+                matches = [w for w in answer['found'] if w['word'] == 'polo'
+                           and w['conf'] >= self.speech_threshold
+                           and -EARLY_S <= w['start'] - (onset - a) / FS <= LATE_S]
+                if not matches:
+                    continue
+                word = min(matches, key=lambda w: abs(w['start'] - (onset - a) / FS))
+                event = self.process_result({'result': [dict(word, start=word['start'] + a / FS,
+                                                            end=word['end'] + a / FS)]}, channel)
+                events.extend(event)
+                if event:
+                    break
         return events
 
     def finish(self):

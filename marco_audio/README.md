@@ -259,7 +259,10 @@ python marco_audio/tools/audio_belief_live.py --device 14 --debug-speech
 python marco_audio/tools/audio_belief_live.py --device 14 --sound
 ```
 
-Say Polo normally, then pause for a second. Vosk checks processed channels 0 and 1;
+Say Polo normally, then pause for a second. The viewer now calls Ahmad's
+`tools/keyword_spotter.py` directly: the same onset gating, amplitude normalization,
+Marco/Polo/unknown vocabulary and Vosk model used by the ROS audio node. It checks
+processed channels 1 and 0;
 Ahmad's robust GCC-PHAT estimates bearing on raw channels 2–5 during the recognised
 word's sample timestamps. Speech uses 40 ms windows, rather than the clap-onset window.
 Only final Polo results with usable directions update the map. Duplicate channel results
@@ -269,10 +272,15 @@ A detected audio gap resets recognition so incomplete words cannot use mismatche
 
 Defaults are permissive: `--speech-threshold 0.35 --bearing-threshold 0.15`.
 The update weight is speech confidence times direction confidence. These are heuristic
-scores, not calibrated probabilities. The likelihood is `L = (1-q) + q*G`; each update
-multiplies the previous predicted belief by L and normalises it. The colour scale shows
+scores, not calibrated probabilities. The likelihood is `L = (1-q) + q*G`, where G is
+now the **normalized angular Gaussian divided by uniform angular density**. Previously
+G had peak one, letting the broad background dominate even a clear single Polo.
+This correction makes one accepted event informative without changing Vosk's score,
+narrowing measured uncertainty, or counting the same word repeatedly. Each update
+multiplies the previous belief by L and normalises it. The default shared audio likelihood
+also respects observation confidence when no explicit reliability is supplied. The colour scale shows
 belief relative to a uniform prior; the dashed line is the latest bearing. Press **R** to reset.
-A restricted `polo`/`[unk]` vocabulary can still misrecognise other words; lower thresholds
+A restricted `marco`/`polo`/`[unk]` vocabulary can still misrecognise other words; lower thresholds
 increase false positives. Real voices and room acoustics need live validation.
 
 Without a live pose CSV, keep the board stationary. 0° points out of the USB edge; +90° is anticlockwise viewed
@@ -283,6 +291,93 @@ bearing, not distance. Optional live microphone pose support is described below.
 Checks: `python marco_audio/tools/test_polo_detection.py`. The optional `--speech-wav PATH`
 uses a mono int16 WAV saying "Polo. Polo. Hello there. Marco. Polo." to test the actual
 recognizer and viewer with simulated +90° microphone delays and deliberately slow plotting.
+
+#### Marco call and one Polo reply (Windows)
+
+```powershell
+python marco_audio/tools/audio_belief_live.py --device 15 --rounds --debug-speech
+```
+
+Use your current ReSpeaker WASAPI input index from `check_device.py`; it can change
+after reconnecting. Connect a speaker to the ReSpeaker output. The viewer selects its
+output on the same host API; use `--output-device INDEX` for another speaker output.
+This Windows path uses sounddevice for playback, so ROS and Linux `aplay` are not required.
+Do not run a second audio capture/speaker node alongside this viewer.
+
+After quiet calibration, the viewer plays the included synthesized spoken
+`clips/marco_spoken.wav`. Recognition is muted during playback and for 0.3 seconds
+afterwards. It then listens for up to `--reply-seconds 10`, accepting just one Polo
+with a usable bearing. Late recognition may finish after the deadline, but the word
+itself must have occurred inside the listening window. A timeout leaves the belief alone.
+Press **M** in the plot for another Marco round, preserving the previous belief;
+**R** cancels the round and clears the belief. Without `--rounds`, listening is continuous.
+Use `--marco-clip PATH.wav` for your own spoken clip; the old placeholder beep is not used.
+
+The fixed grid, colour scale, confidence labels and Bayesian prior update are unchanged.
+This connects the Windows audio viewer; it does not start the RGB-D camera or ROS nodes.
+Keep the board stationary unless supplying capture-time poses. The 0.3-second echo guard
+and recognition thresholds still need validation with your actual speaker and room.
+
+Checks: `python marco_audio/tools/test_response_window.py` covers echo gating, timeout,
+cancellation and one reply per round. The optional speech-WAV pipeline test above also
+exercises rounds with mocked playback and repeated replies; it does not test physical speakers.
+
+#### Combined live audio and RGB-D on Windows
+
+Connect the ReSpeaker and RealSense to the laptop and keep both fixed. Install the
+camera dependencies with `python -m pip install -r rgbd/requirements.txt`.
+Supply a 4×4 camera optical-to-map transform in a NumPy file. For a **level**
+camera facing along the microphone USB edge with microphone yaw at its default
+of zero, map +X is forward, +Y is left and +Z is up. This command creates an
+example transform with the camera at map position (4.10, 3.00, 0.80) metres.
+Replace those three values with your measured camera position. The default
+microphone XY is the map centre (4, 3). Use a measured rotation matrix if the
+camera is tilted or points in a different direction.
+
+```powershell
+python -c "import numpy as np; np.save('camera_to_map.npy', [[0,0,1,4.10],[-1,0,0,3.00],[0,-1,0,0.80],[0,0,0,1]])"
+python marco_audio/tools/audio_belief_live.py --device 15 --rounds --rgbd-camera-to-map camera_to_map.npy --save-map combined_belief.png
+```
+
+Use the input index reported by `check_device.py`. The first camera run may
+need to download the detector weights, or you can pass `--rgbd-model PATH`.
+Test with one person in view. The magenta circle marks the latest accepted depth
+position and the dashed line marks the latest Polo bearing. Both update the same
+grid. Press **M** to call again, **R** to reset both inputs, and close the plot to
+save the final map. No video recording is required.
+
+Camera updates require one valid 3D detection, at least one second between
+updates, and at least 0.35 m change from the previous accepted position. This
+limits repeated evidence from a stationary person. The camera confidence cap
+and extra 0.20 m horizontal uncertainty are conservative starting settings for
+the bench test. A single visible person is assumed to be the target.
+
+#### Single-Polo simulation and RGB-D fusion checks
+
+```powershell
+python marco_audio/tools/simulate_sparse_polo.py
+# Optional real Vosk test with a mono int16 WAV containing exactly one spoken Polo:
+python marco_audio/tools/simulate_sparse_polo.py --speech-wav PATH_TO_ONE_POLO.wav
+python marco_audio/tools/test_polo_detection.py --speech-wav PATH_TO_ONE_POLO.wav --expected-polos 1
+```
+
+The simulator saves `sim/out/sparse_polo.png` and a JSON summary. It compares the old
+and new single-event weighting, retains the map through three minutes without further
+observations, then applies a simulated RGB-D position. With a speech WAV, Vosk processes
+one utterance followed by 180 seconds of silence and must emit exactly one usable event.
+Microphone delays and RGB-D positions are synthetic; this does not establish room accuracy.
+
+The live plot now reports model belief mass inside the ±2-sigma bearing sector, separate
+from speech/direction scores. This is integrated over distance, not a probability that
+Vosk recognized the word correctly. The grid, fixed colour scale, and persistence are unchanged.
+
+For later fusion, both sensors use the same map-frame grid and `BeliefMapFilter`. After
+one audio update, pass only the new visual likelihood to `update(visual=...)`; do not
+reapply the stored audio likelihood every camera frame. The nonzero audio background
+allows a reliable visual position to correct a mistaken audio bearing. These tests verify
+the numerical combination, not a live RGB-D connection or same-person association.
+Retaining the belief assumes one child stays near the inferred position between calls.
+A future robot integration must exclude its own Marco playback from listening.
 
 #### Belief reliability and moving microphones
 

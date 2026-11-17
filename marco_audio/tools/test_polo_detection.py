@@ -11,7 +11,8 @@ from polo_detection import PoloDetector, speech_bearing
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from sensor_fusion.sensor_fusion import AudioObservation, BeliefMapFilter, audio_likelihood, normalise
+from sensor_fusion.sensor_fusion import (AudioObservation, BeliefMapFilter, audio_likelihood,
+    audio_sector_probability, normalise, visual_likelihood, XX, YY)
 
 
 def array_audio(signal, angle):
@@ -128,8 +129,32 @@ class PipelineTests(unittest.TestCase):
         self.assertAlmostEqual(second.sum(), 1)
         self.assertGreater(second[80, 80], second[40, 80])
 
+    def test_single_polo_is_strong_without_inventing_distance(self):
+        obs = AudioObservation(math.pi / 2, math.radians(10), .8, True)
+        likelihood, used = audio_likelihood(obs, robot_xy=(4, 3), reliability=.72)
+        self.assertTrue(used)
+        belief, _ = BeliefMapFilter(diffusion_amount=0).update(audio=likelihood)
+        self.assertGreater(audio_sector_probability(belief, obs, (4, 3)), .6)
+        self.assertAlmostEqual(likelihood[80, 80], likelihood[100, 80])
+        low, _ = audio_likelihood(obs, robot_xy=(4, 3), reliability=.15)
+        self.assertLess(audio_sector_probability(normalise(low), obs, (4, 3)),
+                        audio_sector_probability(belief, obs, (4, 3)))
 
-def check_speech(path):
+    def test_rgbd_can_refine_or_correct_single_audio_update(self):
+        obs = AudioObservation(0, math.radians(10), .8, True)
+        audio, _ = audio_likelihood(obs, robot_xy=(4, 3), reliability=.8)
+        for target in ([6, 3, 1], [4, 5, 1]):
+            fusion = BeliefMapFilter(diffusion_amount=0)
+            first, _ = fusion.update(audio=audio)
+            visual = visual_likelihood(np.array(target), np.diag([.01, .01, .04]))
+            combined, _ = fusion.update(visual=visual)
+            np.testing.assert_allclose(combined, normalise(first * visual))
+            peak = np.unravel_index(np.argmax(combined), combined.shape)
+            self.assertLess(math.hypot(XX[peak] - target[0], YY[peak] - target[1]), .15)
+            self.assertTrue(np.all(combined > 0))
+
+
+def check_speech(path, expected=3):
     from scipy.io import wavfile
     from scipy.signal import resample_poly
     from vosk import Model, SetLogLevel
@@ -144,14 +169,16 @@ def check_speech(path):
     for start in range(0, len(audio), 320):
         events.extend(detector.feed(audio[start:start + 320]))
     events.extend(detector.finish())
-    assert len(events) == 3, f'Expected 3 Polos in test phrase; got {events}'
+    assert len(events) == expected, f'Expected {expected} Polos in test phrase; got {events}'
     for event in events:
         assert dp.angle_error_deg(event['azimuth'], math.pi / 2) < 3, event
-    print('PASS: real speech recognizer, three Polos, no duplicate updates, +90 degree bearings')
-    check_viewer(audio)
+    print(f'PASS: real speech recognizer, {expected} Polos, no duplicate updates, +90 degree bearings')
+    check_viewer(audio, expected)
+    # Repeat the reply in one round: only the first may update the belief.
+    check_viewer(np.concatenate((np.zeros((32000, 6)), audio, audio)), 1, rounds=True)
 
 
-def check_viewer(audio):
+def check_viewer(audio, expected=3, rounds=False):
     """Exercise the actual worker and Vosk while plot processing sleeps 100 ms."""
     import contextlib
     import io
@@ -200,22 +227,26 @@ def check_viewer(audio):
             plt.close(fig)
 
     output = io.StringIO()
-    with contextlib.redirect_stdout(output), patch('sys.argv', ['viewer', '--device', '14']), \
+    argv = ['viewer', '--device', '14'] + (['--rounds', '--output-device', '0'] if rounds else [])
+    with contextlib.redirect_stdout(output), patch('sys.argv', argv), \
+            patch('response_window.play_clip', side_effect=lambda *args: time.sleep(.1)), \
+            patch('sounddevice.query_devices', return_value={'max_output_channels': 2}), \
             patch('sounddevice.InputStream', Stream), patch('matplotlib.pyplot.pause', pause), \
             patch('matplotlib.pyplot.show'):
         viewer.main()
     log = output.getvalue()
-    assert log.count('raw board bearing') == 3, log
+    assert log.count('raw board bearing') == expected, log
     assert 'Audio gap' not in log, log
-    print('PASS: Vosk worker + slow plot: three belief updates, +90 degrees, no audio gaps')
+    print(f'PASS: Vosk worker + slow plot (rounds={rounds}): {expected} belief updates, +90 degrees, no audio gaps')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--speech-wav', type=Path)
+    parser.add_argument('--expected-polos', type=int, default=3)
     args = parser.parse_args()
     result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(PipelineTests))
     if not result.wasSuccessful():
         sys.exit(1)
     if args.speech_wav:
-        check_speech(args.speech_wav)
+        check_speech(args.speech_wav, args.expected_polos)
