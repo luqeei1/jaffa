@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Jetson side of network teleop: UDP from remote_teleop.py -> /cmd_vel.
+"""Jetson side of network teleop: UDP from remote_teleop.py -> /cmd_vel_teleop (+ /estop).
 
 Runs next to p2os_driver on the robot. Listens for command packets from the
 laptop, publishes them on /cmd_vel and replies with battery + odom speeds so
-the laptop can show link health.
+the laptop can show link health. /cmd_vel_teleop goes through cmd_vel_mux, which gives it
+priority over Nav2.
+
+E-stop: while the laptop holds its e-stop flag, /estop true is re-sent every second (so a
+restarted mux picks it up again); clearing the flag on the laptop sends /estop false once.
 
 Safety: if active packets stop arriving for `timeout` s (Wi-Fi drop, laptop
 crash), it publishes zero velocity for `idle_tail` s, then goes quiet. The
@@ -20,12 +24,18 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from p2os_msgs.msg import BatteryState  # p2os type, not sensor_msgs: one type per topic
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Bool, String
 
 # Wire format, shared with remote_teleop.py (network byte order).
 CMD_FMT = '!4sIIBff'
 CMD_MAGIC = b'P3TC'
-STATUS_FMT = '!4sIffff'
+CMD_ACTIVE = 0x1   # command flags byte (older laptops send 0/1, i.e. never e-stop)
+CMD_ESTOP = 0x2
+STATUS_FMT = '!4sIffffB'
 STATUS_MAGIC = b'P3TS'
+MUX_FLAGS = {'estop': 0x1, 'nav': 0x2, 'nav_blocked': 0x4}  # status flags byte <- mux state
+ESTOP_REPEAT_S = 1.0
 
 
 def clamp(x, limit):
@@ -42,7 +52,14 @@ class TeleopReceiver(Node):
         self.max_v = self.declare_parameter('max_linear', 0.5).value
         self.max_w = self.declare_parameter('max_angular', 1.0).value
 
-        self.pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.pub = self.create_publisher(Twist, 'cmd_vel_teleop', 10)
+        self.estop_pub = self.create_publisher(Bool, 'estop', 10)
+        self.laptop_estop = False
+        self.estop_sent = 0.0
+        self.mux = ''
+        self.create_subscription(
+            String, 'cmd_vel_mux/active', self.on_mux,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.create_subscription(Odometry, 'odom', self.on_odom, 10)
         self.create_subscription(BatteryState, 'battery_state', self.on_battery, 10)
         self.battery = float('nan')
@@ -69,6 +86,20 @@ class TeleopReceiver(Node):
     def on_battery(self, msg):
         self.battery = msg.voltage
 
+    def on_mux(self, msg):
+        self.mux = msg.data
+
+    def handle_estop(self, estop, now):
+        if estop and (not self.laptop_estop or now - self.estop_sent >= ESTOP_REPEAT_S):
+            if not self.laptop_estop:
+                self.get_logger().warn('E-STOP from remote teleop')
+            self.estop_pub.publish(Bool(data=True))
+            self.estop_sent = now
+        elif not estop and self.laptop_estop:
+            self.get_logger().info('e-stop released from remote teleop')
+            self.estop_pub.publish(Bool(data=False))
+        self.laptop_estop = estop
+
     def poll(self):
         now = time.monotonic()
         latest = None
@@ -82,7 +113,9 @@ class TeleopReceiver(Node):
                 latest = pkt
 
         if latest:
-            seq, active, v, w = latest
+            seq, flags, v, w = latest
+            active = flags & CMD_ACTIVE
+            self.handle_estop(bool(flags & CMD_ESTOP), now)
             self.reply(seq, now)
             if active:
                 self.publish(clamp(v, self.max_v), clamp(w, self.max_w))
@@ -115,6 +148,7 @@ class TeleopReceiver(Node):
             self.get_logger().info(f'teleop session from {addr[0]}:{addr[1]}')
             self.session = session
             self.last_seq = 0
+            self.laptop_estop = False  # a new laptop run never releases an e-stop it did not set
         elif seq <= self.last_seq:
             return None  # late / duplicated datagram
         self.last_seq = seq
@@ -124,7 +158,7 @@ class TeleopReceiver(Node):
     def reply(self, seq, now):
         age = 0.0 if self.last_active is None else now - self.last_active
         pkt = struct.pack(STATUS_FMT, STATUS_MAGIC, seq, self.battery,
-                          self.odom_v, self.odom_w, age)
+                          self.odom_v, self.odom_w, age, MUX_FLAGS.get(self.mux, 0))
         try:
             self.sock.sendto(pkt, self.peer)
         except OSError:

@@ -1,0 +1,113 @@
+diff --git a/p2os_driver/include/p2os_driver/p2os.hpp b/p2os_driver/include/p2os_driver/p2os.hpp
+index 36d6e68..289f73e 100644
+--- a/p2os_driver/include/p2os_driver/p2os.hpp
++++ b/p2os_driver/include/p2os_driver/p2os.hpp
+@@ -254,6 +254,15 @@ protected:
+   rclcpp::Time last_cmdvel_time_;
+   bool cmdvel_watchdog_triggered_;
+ 
++  //! Resend the current non-zero VEL/RVEL at least this often (s). ARCOS
++  //! only keeps driving while it is being commanded; sending on change
++  //! alone made a held constant speed stall into short bursts. 0 disables.
++  double cmd_vel_resend_s_;
++  rclcpp::Time last_vel_send_;
++  //! true: wait for a SIP after each VEL/RVEL (upstream behaviour, ~100 ms each).
++  //! false: send both back to back (lower latency; robot did not move in the first test).
++  bool cmd_vel_wait_sip_;
++
+   //! Tank-drive (per-wheel VEL2) path — bench diagnostics only. Off
+   //! unless `enable_wheel_cmd` is true, in which case the driver
+   //! subscribes to `wheel_cmd`. The first WheelCmd latches
+diff --git a/p2os_driver/src/p2os.cpp b/p2os_driver/src/p2os.cpp
+index 6a69593..8572b1d 100644
+--- a/p2os_driver/src/p2os.cpp
++++ b/p2os_driver/src/p2os.cpp
+@@ -273,6 +273,16 @@ P2OSNode::P2OSNode(const std::string & node_name)
+     cmd_vel_timeout_s_ > 0.0 ? "enabled" : "disabled",
+     cmd_vel_timeout_s_);
+ 
++  this->declare_parameter<double>("cmd_vel_resend_period", 0.1);
++  this->get_parameter("cmd_vel_resend_period", cmd_vel_resend_s_);
++  this->declare_parameter<bool>("cmd_vel_wait_sip", true);
++  this->get_parameter("cmd_vel_wait_sip", cmd_vel_wait_sip_);
++  last_vel_send_ = this->now();
++  RCLCPP_INFO(rclcpp::get_logger("P2OsDriver"),
++    "cmd_vel resend: %s (period=%.3fs), wait for SIP after each command: %s",
++    cmd_vel_resend_s_ > 0.0 ? "enabled" : "disabled", cmd_vel_resend_s_,
++    cmd_vel_wait_sip_ ? "yes" : "no");
++
+   // Tank-drive path (per-wheel VEL2) — bench diagnostics only. Gated
+   // behind enable_wheel_cmd (default false) so it does not even exist
+   // as a topic in normal field operation: a 25 kg robot should have
+@@ -409,6 +419,7 @@ void P2OSNode::wheelcmd_callback(const p2os_msgs::msg::WheelCmd::SharedPtr msg)
+ void P2OSNode::SendWheelCmd()
+ {
+   wheelcmd_dirty_ = false;
++  last_vel_send_ = this->now();
+ 
+   // Each wheel: ground velocity m/s -> mm/s, clamped to motor_max_speed,
+   // then expressed in VEL2 units of Vel2Divisor (20) mm/s as a signed
+@@ -461,6 +472,14 @@ void P2OSNode::check_and_set_vel()
+         wheelcmd_watchdog_triggered_ = true;
+       }
+     }
++    // Same keep-alive as cmd_vel: upstream sends VEL2 only on change, so a held
++    // constant wheel speed would otherwise outlast the ARCOS serial watchdog.
++    if (!wheelcmd_dirty_ && cmd_vel_resend_s_ > 0.0 &&
++      (fabs(wheelcmd_.left) > 0.005 || fabs(wheelcmd_.right) > 0.005) &&
++      (this->now() - last_vel_send_).seconds() >= cmd_vel_resend_s_)
++    {
++      wheelcmd_dirty_ = true;
++    }
+     if (wheelcmd_dirty_) {SendWheelCmd();}
+     return;
+   }
+@@ -484,10 +503,19 @@ void P2OSNode::check_and_set_vel()
+     }
+   }
+ 
++  // Keep a non-zero command alive: ARCOS stops unless it keeps being commanded.
++  if (!vel_dirty && cmd_vel_resend_s_ > 0.0 &&
++    (fabs(cmdvel_.linear.x) > 0.01 || fabs(cmdvel_.angular.z) > 0.01) &&
++    (this->now() - last_vel_send_).seconds() >= cmd_vel_resend_s_)
++  {
++    vel_dirty = true;
++  }
++
+   if (!vel_dirty) {return;}
+ 
+   RCLCPP_DEBUG(rclcpp::get_logger("P2OsDriver"), "setting vel: [%0.2f,%0.2f]", cmdvel_.linear.x, cmdvel_.angular.z);
+   vel_dirty = false;
++  last_vel_send_ = this->now();
+ 
+   uint16_t absSpeedDemand, absturnRateDemand;
+   unsigned char motorcommand[4];
+@@ -511,8 +539,14 @@ void P2OSNode::check_and_set_vel()
+     motorcommand[3] = (motor_max_speed & 0xFF00) >> 8;
+   }
+ 
++  // cmd_vel_wait_sip=false sends without waiting for a SIP: SendReceive() blocks
++  // ~100 ms per packet, so VEL + RVEL + the main loop's poll take ~300 ms per change.
+   motorpacket.Build(motorcommand, 4);
+-  SendReceive(&motorpacket);
++  if (cmd_vel_wait_sip_) {
++    SendReceive(&motorpacket);
++  } else if (psos_fd >= 0) {
++    motorpacket.Send(psos_fd);
++  }
+ 
+   motorcommand[0] = RVEL;
+   motorcommand[1] = (va >= 0) ? ARGINT : ARGNINT;
+@@ -529,7 +563,11 @@ void P2OSNode::check_and_set_vel()
+   }
+ 
+   motorpacket.Build(motorcommand, 4);
+-  SendReceive(&motorpacket);
++  if (cmd_vel_wait_sip_) {
++    SendReceive(&motorpacket);
++  } else if (psos_fd >= 0) {
++    motorpacket.Send(psos_fd);
++  }
+ }
+ 
+ void P2OSNode::gripper_callback(const p2os_msgs::msg::GripperState::SharedPtr msg)

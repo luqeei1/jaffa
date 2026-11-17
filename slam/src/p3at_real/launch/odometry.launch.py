@@ -27,6 +27,9 @@ RECORD_TOPICS = [
     '/rko_lio/odom', '/kiss/odometry', '/odom',   # the three estimates
     '/tf', '/tf_static', '/cmd_vel', '/battery_state', '/motor_stall',
     '/map',                                       # 2D map, when slam.launch.py runs
+    '/cmd_vel_teleop', '/estop', '/cmd_vel_mux/active',  # cmd_vel_mux inputs + state
+    '/scan', '/plan', '/cmd_vel_nav',             # Nav2, when nav.launch.py runs
+    '/cmd_vel_smoothed', '/cmd_vel_nav_safe',     # smoother out, collision_monitor out
 ]
 
 

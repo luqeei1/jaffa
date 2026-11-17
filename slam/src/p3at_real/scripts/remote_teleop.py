@@ -9,6 +9,10 @@ key releases.
   R    next linear speed  (Shift+R previous)
   T    next angular speed (Shift+T previous)
   Space  stop now         Esc  quit
+  E  E-STOP (latched: blocks Nav2 too, cancels goals)     U  release e-stop
+
+  Teleop overrides Nav2 while you drive; Space only stops teleop, and Nav2 takes over
+  again 0.5 s later. Use E to stop everything.
 
   python3 remote_teleop.py <jetson-ip> [--port 9870] [--rate 20]
 """
@@ -20,11 +24,16 @@ import time
 import tkinter as tk
 
 # Wire format, shared with teleop_receiver.py (network byte order).
-# command: magic, session, seq, active, v (m/s), w (rad/s)
+# command: magic, session, seq, flags (bit0 active, bit1 e-stop), v (m/s), w (rad/s)
 CMD_FMT = '!4sIIBff'
 CMD_MAGIC = b'P3TC'
-# status reply: magic, echoed seq, battery (V), measured v, measured w, robot cmd age (s)
-STATUS_FMT = '!4sIffff'
+CMD_ACTIVE = 0x1
+CMD_ESTOP = 0x2
+# status reply: magic, echoed seq, battery (V), measured v, measured w, robot cmd age (s),
+# mux flags (bit0 e-stop engaged, bit1 Nav2 driving, bit2 Nav2 blocked: lidar stale).
+# Older receivers send the reply without the flags byte.
+STATUS_FMT = '!4sIffffB'
+STATUS_FMT_OLD = '!4sIffff'
 STATUS_MAGIC = b'P3TS'
 
 # X11 auto-repeat sends release+press pairs; a release is only real if no
@@ -67,6 +76,8 @@ class RemoteTeleop:
         self.last_reply = 0.0
         self.rtt = None
         self.robot = None
+        self.estop = False   # our latched request, sent in every packet
+        self.mux = None      # mux flags from the receiver, None = old receiver
 
         self.held = set()
         self.release_jobs = {}
@@ -105,6 +116,11 @@ class RemoteTeleop:
             self.ang_i = (self.ang_i + (-1 if shift else 1)) % len(self.ang_levels)
         elif key == 'space':
             self.stop()
+        elif key == 'e':
+            self.stop()
+            self.estop = True
+        elif key == 'u':
+            self.estop = False
         elif key == 'escape':
             self.quit()
         self.update_status()
@@ -125,8 +141,8 @@ class RemoteTeleop:
 
     def send(self, active):
         self.seq += 1
-        pkt = struct.pack(CMD_FMT, CMD_MAGIC, self.session, self.seq,
-                          int(active), self.v, self.w)
+        flags = (CMD_ACTIVE if active else 0) | (CMD_ESTOP if self.estop else 0)
+        pkt = struct.pack(CMD_FMT, CMD_MAGIC, self.session, self.seq, flags, self.v, self.w)
         try:
             self.sock.sendto(pkt, self.addr)
         except OSError:
@@ -140,9 +156,13 @@ class RemoteTeleop:
                 data, _ = self.sock.recvfrom(64)
             except (BlockingIOError, OSError):
                 return
-            if len(data) != struct.calcsize(STATUS_FMT):
+            if len(data) == struct.calcsize(STATUS_FMT):
+                magic, seq, batt, v, w, age, mux = struct.unpack(STATUS_FMT, data)
+            elif len(data) == struct.calcsize(STATUS_FMT_OLD):
+                magic, seq, batt, v, w, age = struct.unpack(STATUS_FMT_OLD, data)
+                mux = None
+            else:
                 continue
-            magic, seq, batt, v, w, age = struct.unpack(STATUS_FMT, data)
             if magic != STATUS_MAGIC:
                 continue
             now = time.monotonic()
@@ -150,6 +170,7 @@ class RemoteTeleop:
             if seq in self.sent_at:
                 self.rtt = now - self.sent_at[seq]
             self.robot = (batt, v, w, age)
+            self.mux = mux
 
     def tick(self):
         dt = 1.0 / self.rate
@@ -178,6 +199,20 @@ class RemoteTeleop:
                     f'odom lin {v:+.2f} m/s   ang {w:+.2f} rad/s')
         else:
             link = 'link LOST (no reply from receiver)\n'
+        if self.mux is None or not link_ok:
+            robot_state = 'E-STOP requested' if self.estop else ''
+        elif self.mux & 0x1:
+            robot_state = '*** E-STOP engaged (U to release) ***'
+        elif self.estop:
+            robot_state = 'E-STOP requested, waiting for robot...'
+        elif self.mux & 0x4:
+            robot_state = 'Nav2 BLOCKED: lidar scan stale'
+        elif self.mux & 0x2:
+            robot_state = 'Nav2 driving (WASD overrides)'
+        else:
+            robot_state = ''
+        if robot_state:
+            link += '\n' + robot_state
         self.status.set(
             f'max  lin {self.lin_levels[self.lin_i]:.2f} m/s   '
             f'ang {self.ang_levels[self.ang_i]:.2f} rad/s\n'

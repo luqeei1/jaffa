@@ -4,11 +4,12 @@
 # Upstream only sets the work mode. Our L2 then sent point packets with every range = 0
 # (empty clouds, 2026-11-04), while the example, which also resets, got real points.
 #
-#   ros2 run p3at_real patch_unilidar_driver.sh [path to unilidar_sdk2]   (default ~/dev/hcr_ws/src/unilidar_sdk2)
+#   slam/src/p3at_real/scripts/patch_unilidar_driver.sh [path to unilidar_sdk2]   (default: slam/src/unilidar_sdk2)
+#   (apply_patches.sh runs this for you)
 #   then rebuild: colcon build --symlink-install --packages-select unitree_lidar_ros2
 # Safe to run twice.
 set -euo pipefail
-sdk=${1:-~/dev/hcr_ws/src/unilidar_sdk2}
+sdk=${1:-$(readlink -f "$(dirname "$(readlink -f "$0")")/../..")/unilidar_sdk2}
 f=$sdk/unitree_lidar_ros2/src/unitree_lidar_ros2/include/unitree_lidar_ros2.h
 [[ -f $f ]] || { echo "not found: $f"; exit 1; }
 if grep -q 'resetLidar' "$f"; then

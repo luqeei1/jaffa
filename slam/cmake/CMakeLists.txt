@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(slam_workspace NONE)
 
 set(SLAM_WORKSPACE "${CMAKE_CURRENT_LIST_DIR}/..")
-set(SLAM_ROS_DISTRO "$ENV{ROS_DISTRO}" CACHE STRING "ROS 2 distribution (for example, jazzy)")
+set(SLAM_ROS_DISTRO "$ENV{ROS_DISTRO}" CACHE STRING "ROS 2 distribution (for example, humble)")
 
 if(NOT SLAM_ROS_DISTRO)
   message(FATAL_ERROR "Set SLAM_ROS_DISTRO or source a ROS 2 setup file before configuring.")
@@ -23,6 +23,15 @@ if(NOT EXISTS "${ROS_SETUP_FILE}")
   message(FATAL_ERROR "ROS setup file not found: ${ROS_SETUP_FILE}")
 endif()
 
+# Third-party packages are git submodules in src/ (p2os2, kiss-icp, unilidar_sdk2), plus our patches.
+add_custom_target(patch_slam
+  COMMAND git submodule update --init -- src/p2os2 src/kiss-icp src/unilidar_sdk2
+  COMMAND "${BASH_EXECUTABLE}" "${SLAM_WORKSPACE}/src/p3at_real/scripts/apply_patches.sh" "${SLAM_WORKSPACE}/src"
+  WORKING_DIRECTORY "${SLAM_WORKSPACE}"
+  USES_TERMINAL
+  COMMENT "Fetching SLAM submodules and applying local patches"
+)
+
 add_custom_target(build_slam
   COMMAND "${COLCON_EXECUTABLE}" build
           --base-paths "${SLAM_WORKSPACE}/src"
@@ -31,6 +40,7 @@ add_custom_target(build_slam
   USES_TERMINAL
   COMMENT "Building the SLAM ROS 2 workspace with colcon"
 )
+add_dependencies(build_slam patch_slam)
 
 add_custom_target(run_slam
   COMMAND "${BASH_EXECUTABLE}" -c

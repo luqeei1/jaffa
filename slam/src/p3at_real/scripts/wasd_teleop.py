@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WASD teleop that streams /cmd_vel at a fixed rate while keys are held.
+"""WASD teleop that streams /cmd_vel_teleop at a fixed rate while keys are held.
 
 Opens a small Tk window (needs focus) because a terminal cannot see key
 releases. Works for the real robot and the sim alike.
@@ -8,18 +8,24 @@ releases. Works for the real robot and the sim alike.
   R    next linear speed  (Shift+R previous)
   T    next angular speed (Shift+T previous)
   Space  stop now         Esc  quit
+  E  E-STOP (latched: blocks Nav2 too, cancels goals)     U  release e-stop
+
+/cmd_vel_teleop goes through cmd_vel_mux (robot.launch.py), which gives it priority over Nav2.
+Space only stops teleop: Nav2 takes over again 0.5 s later. Use E to stop everything.
 """
 import tkinter as tk
 
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Bool, String
 
 # X11 auto-repeat sends release+press pairs; a release is only real if no
 # press of the same key follows within this window.
 RELEASE_DEBOUNCE_MS = 40
 # Keep publishing zeros this long after stopping, then go quiet so other
-# /cmd_vel sources (e.g. an autonomy stack) are not overridden.
+# cmd_vel_mux inputs (e.g. Nav2) are not overridden.
 IDLE_TAIL_S = 0.5
 
 
@@ -47,7 +53,12 @@ class WasdTeleop(Node):
         self.ang_decel = self.declare_parameter('angular_decel', 4.0).value
         self.lin_i = 1
         self.ang_i = 1
-        self.pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.pub = self.create_publisher(Twist, 'cmd_vel_teleop', 10)
+        self.estop_pub = self.create_publisher(Bool, 'estop', 10)
+        self.mux = '?'
+        self.create_subscription(
+            String, 'cmd_vel_mux/active', self.on_mux,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 
         self.held = set()
         self.release_jobs = {}
@@ -86,6 +97,11 @@ class WasdTeleop(Node):
             self.ang_i = (self.ang_i + (-1 if shift else 1)) % len(self.ang_levels)
         elif key == 'space':
             self.stop()
+        elif key == 'e':
+            self.stop()
+            self.estop_pub.publish(Bool(data=True))
+        elif key == 'u':
+            self.estop_pub.publish(Bool(data=False))
         elif key == 'escape':
             self.quit()
         self.update_status()
@@ -104,7 +120,11 @@ class WasdTeleop(Node):
         self.held.clear()
         self.v = self.w = 0.0
 
+    def on_mux(self, msg):
+        self.mux = msg.data
+
     def tick(self):
+        rclpy.spin_once(self, timeout_sec=0)  # Tk owns the main loop; poll ROS callbacks here
         dt = 1.0 / self.rate
         fwd = ('w' in self.held) - ('s' in self.held)
         turn = ('a' in self.held) - ('d' in self.held)
@@ -128,7 +148,8 @@ class WasdTeleop(Node):
         self.status.set(
             f'max  lin {self.lin_levels[self.lin_i]:.2f} m/s   '
             f'ang {self.ang_levels[self.ang_i]:.2f} rad/s\n'
-            f'cmd  lin {self.v:+.2f} m/s   ang {self.w:+.2f} rad/s')
+            f'cmd  lin {self.v:+.2f} m/s   ang {self.w:+.2f} rad/s\n'
+            f'mux  {"*** E-STOP (U to release) ***" if self.mux == "estop" else self.mux}')
 
     def quit(self):
         self.stop()

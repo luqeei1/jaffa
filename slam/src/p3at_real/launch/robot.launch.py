@@ -1,6 +1,12 @@
-"""Real P3-AT: p2os driver on the serial port, then enable the motors.
+"""Real P3-AT: p2os driver on the serial port, cmd_vel_mux in front of it, then enable the motors.
 
 Drive it from a second terminal: ros2 run p3at_real wasd_teleop.py (see docs/real_robot.md).
+
+  teleop (wasd_teleop / teleop_receiver) ─► /cmd_vel_teleop   ─┐
+  Nav2 ─► collision_monitor            ─► /cmd_vel_nav_safe ─┼─► cmd_vel_mux ─► /cmd_vel ─► p2os_driver
+  /estop (std_msgs/Bool)                                      ─┘
+
+Only cmd_vel_mux should publish /cmd_vel: anything publishing there directly bypasses the e-stop.
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
@@ -32,6 +38,22 @@ def generate_launch_description():
         # true = also start teleop_receiver (UDP from remote_teleop.py on the laptop -> /cmd_vel).
         DeclareLaunchArgument('remote_teleop', default_value='false'),
         DeclareLaunchArgument('teleop_port', default_value='9870'),
+        # Hard caps on what Nav2 may command, on top of its own limits in nav2_params.yaml.
+        DeclareLaunchArgument('nav_max_linear', default_value='0.3'),
+        DeclareLaunchArgument('nav_max_angular', default_value='0.6'),
+        DeclareLaunchArgument('start_estopped', default_value='false'),
+
+        Node(
+            package='p3at_real', executable='cmd_vel_mux.py', name='cmd_vel_mux',
+            output='screen',
+            parameters=[{
+                'teleop.max_linear': LaunchConfiguration('max_xspeed'),
+                'teleop.max_angular': LaunchConfiguration('max_yawspeed'),
+                'nav.max_linear': LaunchConfiguration('nav_max_linear'),
+                'nav.max_angular': LaunchConfiguration('nav_max_angular'),
+                'start_estopped': LaunchConfiguration('start_estopped'),
+            }],
+        ),
 
         Node(
             package='p3at_real', executable='teleop_receiver.py', name='teleop_receiver',
