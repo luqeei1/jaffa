@@ -22,7 +22,7 @@ marco_audio/
 │   └── speech_node.py      Marco's voice: plays a clip when asked
 ├── launch/
 │   └── marco_audio.launch.py  starts both nodes and the board's transform (section 11)
-├── clips/                  the voice clips speech_node plays (placeholder beeps for now)
+├── clips/                  the four voice clips speech_node plays (section 10)
 ├── test/                   checks for the nodes and the launch file, no ROS needed
 ├── tools/                  stand-alone scripts, no ROS needed
 │   ├── mic_array.py        shared constants: sample rate, channel map, mic positions
@@ -40,7 +40,7 @@ marco_audio/
 │   ├── live_doa.py         live direction finder: every method + chip, saves each run, --replay
 │   ├── keyword_spotter.py  tells the words "marco" and "polo" from every other sound (Vosk)
 │   ├── export_clips.py     small clips.npz of a run's sounds, to share or send for checking
-│   └── make_placeholder_clips.py  rebuilds the four placeholder clips in clips/
+│   └── make_placeholder_clips.py  writes beeps over the four clips (only to test without the voice)
 ├── sim/                    room simulation (pyroomacoustics) to compare the methods
 │   ├── benchmark.py        all methods x 4 reverberation times x 24 directions x 1/2 m
 │   ├── tune.py             analysis window length and PHAT strength
@@ -500,12 +500,22 @@ fields. This folder is a ROS 2 Humble package with two nodes:
   0.6 and it starts when the sound starts. Because the whole word has to be heard first, each
   message then goes out about a second after its sound started (the time stamp is still the
   start of the sound). Without Vosk the node works as before and `keyword` stays empty;
-  `-p keywords:=false` switches it off. Not measured yet: how many real "Polo!"s it catches
-  and how often ordinary talk is mistaken for one.
+  `-p keywords:=false` switches it off. First test on a real voice, 17 Nov 2026 (one speaker,
+  1 m from the board, quiet room, on a laptop): 24 of 24 spoken "Polo!"s were caught, each with
+  confidence 1.00. A minute of ordinary talk at normal volume stayed under the sound detector's
+  loudness limit, so none of it reached the recogniser. With that limit lowered by 10 dB, 2 of
+  23 pieces of the same talk were mistaken for "polo" (about 2 a minute), both with confidence
+  below 0.8. Runs: `recordings/live_20261117_2213` (the words) and `live_20261117_2222` (the
+  talk). Not measured yet: other voices, a noisy room, and the Jetson.
 - **`speech_node`** (Marco's voice) plays `clips/<name>.wav` through the board when a name arrives
   on `/marco/speech/say`, and publishes `true` on `/marco/speech/active` while it plays.
   `audio_node` ignores sounds that start while that is true, so Marco does not report his own
-  voice. The four clips are placeholder beeps until the real voice is recorded.
+  voice. The four clips (`marco`, `polo`, `found_you`, `sleepy`) are spoken by a computer voice.
+  They were made on 17 Nov 2026 with the Piper text-to-speech program and its
+  `en_US-bryce-medium` voice (see Sources). To remake one: `pip install piper-tts`, then
+  `python -m piper.download_voices en_US-bryce-medium`, then
+  `python -m piper -m en_US-bryce-medium -f clips/marco.wav -- "Marco!"`.
+  `tools/make_placeholder_clips.py` writes beeps over them, so run it only to get the beeps back.
 - The message type is a package of its own, `../marco_audio_msgs` (`msg/SoundEvent.msg`).
 
 Build it on Ubuntu 22.04 with ROS 2 Humble (the robot's Jetson, or WSL2 on a Windows laptop):
@@ -542,7 +552,7 @@ Checks that need no ROS 2 and no board (stand-in ROS modules in `test/`), from t
 
 ```bash
 python test/test_audio_node.py     # 28 checks: replay publishes exactly what live_doa.py finds
-python test/test_speech_node.py    # 22 checks: queueing, the speaking flag, a player that fails
+python test/test_speech_node.py    # 23 checks: queueing, the speaking flag, a player that fails
 python test/test_launch_file.py    # 45 checks: what the launch file starts, and with what settings
 python test/test_keyword_spotter.py  # 35 checks: which words count, and how audio_node uses the spotter
 ```
@@ -623,3 +633,10 @@ Full list with DOIs: `docs/references.bib`.
   <https://github.com/respeaker/reSpeaker_XVF3800_USB_4MIC_ARRAY> (USB control
   protocol and command ids used by `chip_doa.py`); `xmos_firmwares/usb/readme.md`
   (firmware changelog and 6-channel layout)
+
+### Software used for Marco's voice
+
+- Piper text-to-speech (Open Home Foundation), <https://github.com/OHF-Voice/piper1-gpl>, with
+  the voice `en_US-bryce-medium` from <https://huggingface.co/rhasspy/piper-voices>. The voice's
+  model card gives its licence as public domain. Used on 17 Nov 2026 to make the four clips
+  in `clips/`.

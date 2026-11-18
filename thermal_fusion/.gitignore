@@ -1,0 +1,7 @@
+# Local data: snapshots, logs, calibration captures, generated boards, calibration backups
+captures/
+logs/
+calib_captures/
+calib_board/
+calibration/*.bak
+.pytest_cache/

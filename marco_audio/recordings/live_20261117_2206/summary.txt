@@ -1,0 +1,4 @@
+Live run live_20261117_2206: 137 s, distance None m, window 5 ms before to 2 ms after
+Labelled sounds used: 0 (latest take of each angle); all sounds heard: 7
+
+No labelled sounds, so no errors to report.
