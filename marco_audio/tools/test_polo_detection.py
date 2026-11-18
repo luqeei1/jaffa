@@ -231,7 +231,7 @@ def check_viewer(audio, expected=3, rounds=False):
     with contextlib.redirect_stdout(output), patch('sys.argv', argv), \
             patch('response_window.play_clip', side_effect=lambda *args: time.sleep(.1)), \
             patch('sounddevice.query_devices', return_value={'max_output_channels': 2}), \
-            patch('sounddevice.InputStream', Stream), patch('matplotlib.pyplot.pause', pause), \
+            patch('sounddevice.InputStream', Stream), patch('matplotlib.backends.backend_agg.FigureCanvasAgg.flush_events', pause), \
             patch('matplotlib.pyplot.show'):
         viewer.main()
     log = output.getvalue()

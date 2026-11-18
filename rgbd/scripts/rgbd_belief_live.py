@@ -181,7 +181,7 @@ def update_from_rgbd(prior, frame_evidence):
 # ------------------------------ Live loop ---------------------------------
 
 def run_rgbd(bag=None, model_path="yolo26n.pt", confidence=0.3,
-             robot_xy=ROBOT_XY, robot_yaw=ROBOT_YAW):
+             robot_xy=ROBOT_XY, robot_yaw=ROBOT_YAW, imgsz=640):
     """Run the RGB-D detector and update/display the map for each frame."""
     try:
         from rgbd.core import DetectorConfig, PersonDetector, Pipeline
@@ -192,7 +192,7 @@ def run_rgbd(bag=None, model_path="yolo26n.pt", confidence=0.3,
         ) from exc
 
     camera_pose = camera_pose_in_map(robot_xy, robot_yaw)
-    detector = PersonDetector(DetectorConfig(model_path=model_path, conf=confidence))
+    detector = PersonDetector(DetectorConfig(model_path=model_path, conf=confidence, imgsz=imgsz))
     pipeline = Pipeline(detector, pose_fn=lambda _stamp: camera_pose)
     belief = np.full(XX.shape, 1.0 / XX.size)
 
@@ -249,6 +249,7 @@ def main():
     parser.add_argument("--bag", help="RGB-D recording to play back (default: live camera)")
     parser.add_argument("--model", default="yolo26n.pt", help="YOLO weights")
     parser.add_argument("--conf", type=float, default=0.3, help="YOLO confidence threshold")
+    parser.add_argument("--imgsz", type=int, default=640, help="YOLO input size")
     parser.add_argument("--robot-x", type=float, default=float(ROBOT_XY[0]),
                         help="robot map x for the static camera pose")
     parser.add_argument("--robot-y", type=float, default=float(ROBOT_XY[1]),
@@ -256,11 +257,14 @@ def main():
     parser.add_argument("--robot-yaw-deg", type=float, default=float(np.rad2deg(ROBOT_YAW)),
                         help="robot heading in map frame for the static camera pose")
     args = parser.parse_args()
+    if args.imgsz <= 0:
+        parser.error("--imgsz must be positive")
 
     run_rgbd(
         bag=args.bag,
         model_path=args.model,
         confidence=args.conf,
+        imgsz=args.imgsz,
         robot_xy=np.array([args.robot_x, args.robot_y]),
         robot_yaw=np.deg2rad(args.robot_yaw_deg),
     )

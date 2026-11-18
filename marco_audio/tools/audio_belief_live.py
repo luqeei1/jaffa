@@ -44,10 +44,15 @@ def main():
     parser.add_argument("--rgbd-camera-to-map", type=Path,
                         help="enable live RealSense with a fixed optical-to-map 4x4 .npy transform")
     parser.add_argument("--rgbd-model", help="optional path to RGB-D YOLO weights")
+    parser.add_argument("--rgbd-imgsz", type=int, default=416, help="YOLO input size (default: 416)")
+    parser.add_argument("--map-only", action="store_true", help="hide the RGB-D preview and draw only the map")
     parser.add_argument("--rgbd-interval", type=float, default=1.5,
                         help="minimum seconds between RGB-D inference starts (default: 1.5)")
     parser.add_argument("--save-map", type=Path, help="save final belief plot to this PNG on exit")
     args = parser.parse_args()
+    if args.rgbd_imgsz <= 0:
+        parser.error("--rgbd-imgsz must be positive")
+    show_preview = bool(args.rgbd_camera_to_map and not args.map_only)
     if not math.isfinite(args.rgbd_interval) or args.rgbd_interval <= 0:
         parser.error("--rgbd-interval must be positive and finite")
     if args.rgbd_camera_to_map and (args.pose_csv or args.sound):
@@ -136,13 +141,7 @@ def main():
     if not (xs[0] <= mic_xy[0] <= xs[-1] and ys[0] <= mic_xy[1] <= ys[-1]):
         parser.error("--mic-xy must lie inside the belief map")
     mic_yaw = math.radians(args.mic_yaw_deg)
-    if args.rgbd_camera_to_map:
-        fig, (camera_ax, ax) = plt.subplots(1, 2, figsize=(15, 6), layout="constrained")
-        preview = camera_ax.imshow(np.zeros((480, 640, 3), dtype=np.uint8))
-        camera_ax.set_title("Starting RealSense and person detector…")
-        camera_ax.axis("off")
-    else:
-        fig, ax = plt.subplots(figsize=(9, 6), layout="constrained")
+    fig, ax = plt.subplots(figsize=(9, 6), layout="constrained")
     grid = ax.imshow(fusion.belief * fusion.belief.size, origin="lower", extent=(xs[0], xs[-1], ys[0], ys[-1]),
                      vmin=0, vmax=20)
     fig.colorbar(grid, ax=ax, extend="max", label="Belief / uniform prior (fixed scale; >=20 saturates)")
@@ -215,13 +214,31 @@ def main():
     results = queue.SimpleQueue()
     dropped = threading.Event()
     stop = threading.Event()
+    capture_origin = None
+    capture_samples = 0
 
     def capture(samples, frames, time_info, status):
+        nonlocal capture_origin, capture_samples
         if status.input_overflow:
             dropped.set()
+            capture_origin = None
         try:
-            # PortAudio ADC time and currentTime share a clock; map to Unix time.
-            captured = time.time() - (time_info.currentTime - time_info.inputBufferAdcTime)
+            now = time.time()
+            adc = time_info.inputBufferAdcTime
+            lag = time_info.currentTime - adc
+            if math.isfinite(adc) and adc != 0 and math.isfinite(lag) and 0 <= lag <= 1:
+                observed = now - lag
+            elif args.pose_csv:
+                dropped.set()
+                return
+            else:
+                observed = now - frames / FS
+            # For a fixed microphone, use sample spacing within a run of audio.
+            # Windows callback delivery jitter is not a gap in the sample stream.
+            if capture_origin is None or (cycle and cycle.is_idle()):
+                capture_origin, capture_samples = observed, 0
+            captured = observed if args.pose_csv else capture_origin + capture_samples / FS
+            capture_samples += frames
             token = cycle.capture_id(captured) if cycle else 0
             if token is None:
                 return
@@ -328,16 +345,19 @@ def main():
                 print("RealSense connected. Keep both sensors fixed for the combined map.", flush=True)
                 next_preview = 0.0
                 while not stop.is_set():
-                    frame = src.read()
+                    frames = src.read_frames()
                     captured = time.time()
-                    if frame is None:
+                    if frames is None:
                         raise RuntimeError("No frame returned by the live camera")
-                    put_latest(inference_frames, (captured, frame, src.intrinsics))
+                    color_frame = frames.get_color_frame()
+                    if not color_frame:
+                        continue
+                    put_latest(inference_frames, (captured, frames, src))
+                    camera_ready.set()
                     now = time.monotonic()
-                    if now >= next_preview:
-                        put_latest(preview_frames, frame[0])
-                        camera_ready.set()
-                        next_preview = now + .067
+                    if show_preview and now >= next_preview:
+                        put_latest(preview_frames, src.color_image(color_frame))
+                        next_preview = now + 1 / 30
         except Exception as exc:
             results.put(RuntimeError(f"RGB-D capture failed: {exc}"))
 
@@ -349,7 +369,7 @@ def main():
 
             # Leave CPU capacity for Vosk, bearing estimation and the GUI.
             torch.set_num_threads(2)
-            config = DetectorConfig(imgsz=416)
+            config = DetectorConfig(imgsz=args.rgbd_imgsz)
             if args.rgbd_model:
                 config.model_path = args.rgbd_model
             pipeline = Pipeline(PersonDetector(config))
@@ -358,18 +378,21 @@ def main():
                     stop.wait(.05)
                     continue
                 try:
-                    captured, frame, intrinsics = inference_frames.get(timeout=.1)
+                    captured, frames, src = inference_frames.get(timeout=.1)
                 except queue.Empty:
                     continue
-                color, depth, stamp_ms, number = frame
                 with inference_lock:
                     if cycle and not cycle.is_idle():
                         continue
                     started = time.monotonic()
-                    evidence = pipeline.process(color, depth, intrinsics, stamp_ms, number)
+                    frame = src.decode_frames(frames)
+                    if frame is None:
+                        continue
+                    color, depth, stamp_ms, number = frame
+                    evidence = pipeline.process(color, depth, src.intrinsics, stamp_ms, number)
                 latest_boxes = (evidence.detections, pipeline.config.localise)
                 visible = rgbd_position_observation(evidence, camera_to_map)
-                put_latest(visual_results, (captured, visible))
+                put_latest(visual_results, (captured, visible, pipeline.last_detect_ms))
                 if not detector_ready.is_set():
                     detector_ready.set()
                     print("RGB-D detector ready.", flush=True)
@@ -378,8 +401,12 @@ def main():
             results.put(RuntimeError(f"RGB-D inference failed: {exc}"))
 
     camera_worker = inference_worker = None
+    preview_open = False
+    preview_name = "RealSense colour"
     if args.rgbd_camera_to_map:
-        from rgbd.scripts.detect_live import draw_detections
+        if show_preview:
+            import cv2
+            from rgbd.scripts.detect_live import draw_detections
 
         camera_worker = threading.Thread(target=capture_rgbd, daemon=True)
         inference_worker = threading.Thread(target=analyse_rgbd, daemon=True)
@@ -391,6 +418,7 @@ def main():
         with sd.InputStream(device=args.device, channels=ma.N_CHANNELS, samplerate=FS,
                             dtype="float32", blocksize=320, callback=capture):
             auto_requested = False
+            map_stamps = (None, None)
             while plt.fignum_exists(fig.number):
                 if cycle:
                     cycle.status(time.time())
@@ -480,23 +508,19 @@ def main():
                               " (model estimate) · R = reset")
                     ax.set_title(title)
                     print(f"{title} (raw board bearing {raw_angle:+.0f}°)", flush=True)
-                if camera_worker:
+                if show_preview:
                     try:
                         color = preview_frames.get_nowait().copy()
                         detections, loc_config = latest_boxes
                         if loc_config is not None:
                             draw_detections(color, detections, loc_config)
-                        preview.set_data(color[:, :, ::-1])
-                        if cycle and not cycle.is_idle():
-                            camera_ax.set_title("RealSense colour · detection paused for Polo")
-                        elif not detector_ready.is_set():
-                            camera_ax.set_title("RealSense colour · starting person detector")
-                        else:
-                            camera_ax.set_title("RealSense colour · latest detections")
+                        cv2.imshow(preview_name, color)
+                        preview_open = True
                     except queue.Empty:
                         pass
+                if camera_worker:
                     try:
-                        visual_stamp, visible = visual_results.get_nowait()
+                        visual_stamp, visible, detect_ms = visual_results.get_nowait()
                     except queue.Empty:
                         visible = None
                     if visible is not None and fresh_capture(
@@ -515,18 +539,42 @@ def main():
                                 last_visual, last_visual_stamp = (x, y), visual_stamp
                                 ax.set_title("Combined belief · latest update: RGB-D" if last_capture is not None
                                              else "RGB-D belief · waiting for Polo")
-                                print(f"RGB-D update: ({x:.2f}, {y:.2f}) m · reliability {weight:.0%}", flush=True)
-                grid.set_data(displayed_belief() * fusion.belief.size)
-                age_label.set_text((cycle.status(time.time()) if cycle else "No observation" if last_capture is None else "Belief retained until next detection or R")
-                                   + (" | audio measures bearing only" if camera_worker else " | distance unknown"))
+                                latency_ms = (time.time() - visual_stamp) * 1000
+                                print(f"RGB-D update: ({x:.2f}, {y:.2f}) m · reliability {weight:.0%}"
+                                      f" · YOLO {detect_ms:.0f} ms · frame-to-map {latency_ms:.0f} ms", flush=True)
+                status = (cycle.status(time.time()) if cycle else "No observation" if last_capture is None else "Belief retained until next detection or R")
+                status += " | audio measures bearing only" if camera_worker else " | distance unknown"
                 if not camera_ready.is_set():
-                    age_label.set_text("Waiting for first RealSense frame")
+                    status = "Waiting for first RealSense frame"
                 elif cycle and not ready.is_set():
-                    age_label.set_text("Calibrating microphone")
-                plt.pause(0.05)
+                    status = "Calibrating microphone"
+                elif camera_worker and not detector_ready.is_set():
+                    status += " | starting RGB-D detector"
+                if status != age_label.get_text():
+                    age_label.set_text(status)
+                if map_stamps != (last_capture, last_visual_stamp):
+                    grid.set_data(displayed_belief() * fusion.belief.size)
+                    map_stamps = (last_capture, last_visual_stamp)
+                if fig.stale:
+                    fig.canvas.draw_idle()
+                fig.canvas.flush_events()
+                if preview_open:
+                    key = cv2.waitKey(1)
+                    try:
+                        visible = cv2.getWindowProperty(preview_name, cv2.WND_PROP_VISIBLE) >= 1
+                    except cv2.error:
+                        visible = False
+                    if key == ord("q") or not visible:
+                        preview_open = False
+                        show_preview = False
+                        if visible:
+                            cv2.destroyWindow(preview_name)
+                stop.wait(.01)
     except KeyboardInterrupt:
         pass
     finally:
+        if preview_open:
+            cv2.destroyAllWindows()
         stop.set()
         if cycle:
             cycle.cancel()
