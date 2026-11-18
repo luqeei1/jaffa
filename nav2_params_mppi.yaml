@@ -1,0 +1,376 @@
+# Nav2 for the real P3-AT with the MPPI controller (copy of nav2_params.yaml; only FollowPath and
+# min_y_velocity_threshold differ). Use with:
+#   ros2 launch p3at_real nav.launch.py \
+#     params_file:=$(ros2 pkg prefix p3at_real)/share/p3at_real/config/nav2_params_mppi.yaml
+# MPPI weights come from the Gazebo tuning (configuration B), adapted to this robot's limits.
+#
+# Nav2 for the real P3-AT on top of slam.launch.py (used by launch/nav.launch.py).
+# Based on nav2_bringup/params/nav2_params.yaml (Humble 1.1.20); only the servers navigation_launch.py
+# starts are here. No AMCL / map_server: RTAB-Map publishes /map and map -> odom.
+#
+# Frames: map (RTAB-Map) -> odom (RKO-LIO) -> base_link (robot centre, axle height ~0.11 m above floor).
+# Obstacles: /scan, flattened from /unilidar/cloud by pointcloud_to_laserscan (nav.launch.py).
+# Speeds are deliberately low for first tests: raise desired_linear_vel AND the velocity_smoother limits
+# AND cmd_vel_mux's nav cap (robot.launch.py nav_max_linear / nav_max_angular).
+#
+# Velocity path: controller + behaviours -> /cmd_vel_nav -> velocity_smoother -> /cmd_vel_smoothed
+#   -> collision_monitor -> /cmd_vel_nav_safe -> cmd_vel_mux -> /cmd_vel -> p2os_driver
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: False
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /rko_lio/odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    wait_for_service_timeout: 1000
+    # Default BTs: navigate_to_pose_w_replanning_and_recovery.xml / ..._through_poses_...
+    plugin_lib_names:
+      - nav2_compute_path_to_pose_action_bt_node
+      - nav2_compute_path_through_poses_action_bt_node
+      - nav2_smooth_path_action_bt_node
+      - nav2_follow_path_action_bt_node
+      - nav2_spin_action_bt_node
+      - nav2_wait_action_bt_node
+      - nav2_assisted_teleop_action_bt_node
+      - nav2_back_up_action_bt_node
+      - nav2_drive_on_heading_bt_node
+      - nav2_clear_costmap_service_bt_node
+      - nav2_is_stuck_condition_bt_node
+      - nav2_goal_reached_condition_bt_node
+      - nav2_goal_updated_condition_bt_node
+      - nav2_globally_updated_goal_condition_bt_node
+      - nav2_is_path_valid_condition_bt_node
+      - nav2_initial_pose_received_condition_bt_node
+      - nav2_reinitialize_global_localization_service_bt_node
+      - nav2_rate_controller_bt_node
+      - nav2_distance_controller_bt_node
+      - nav2_speed_controller_bt_node
+      - nav2_truncate_path_action_bt_node
+      - nav2_truncate_path_local_action_bt_node
+      - nav2_goal_updater_node_bt_node
+      - nav2_recovery_node_bt_node
+      - nav2_pipeline_sequence_bt_node
+      - nav2_round_robin_node_bt_node
+      - nav2_transform_available_condition_bt_node
+      - nav2_time_expired_condition_bt_node
+      - nav2_path_expiring_timer_condition
+      - nav2_distance_traveled_condition_bt_node
+      - nav2_single_trigger_bt_node
+      - nav2_goal_updated_controller_bt_node
+      - nav2_is_battery_low_condition_bt_node
+      - nav2_navigate_through_poses_action_bt_node
+      - nav2_navigate_to_pose_action_bt_node
+      - nav2_remove_passed_goals_action_bt_node
+      - nav2_planner_selector_bt_node
+      - nav2_controller_selector_bt_node
+      - nav2_goal_checker_selector_bt_node
+      - nav2_controller_cancel_bt_node
+      - nav2_path_longer_on_approach_bt_node
+      - nav2_wait_cancel_bt_node
+      - nav2_spin_cancel_bt_node
+      - nav2_back_up_cancel_bt_node
+      - nav2_assisted_teleop_cancel_bt_node
+      - nav2_drive_on_heading_cancel_bt_node
+      - nav2_is_battery_charging_condition_bt_node
+
+bt_navigator_navigate_through_poses_rclcpp_node:
+  ros__parameters:
+    use_sim_time: False
+
+bt_navigator_navigate_to_pose_rclcpp_node:
+  ros__parameters:
+    use_sim_time: False
+
+controller_server:
+  ros__parameters:
+    use_sim_time: False
+    controller_frequency: 10.0          # Jetson CPU is shared with RTAB-Map + RKO-LIO
+    odom_topic: /rko_lio/odom
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001    # differential/skid-steer: no lateral motion
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.3
+      movement_time_allowance: 15.0
+    general_goal_checker:
+      stateful: True
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.35
+    # MPPI: samples batch_size trajectories over time_steps * model_dt seconds and picks a
+    # cost-weighted average. Limits match velocity_smoother and cmd_vel_mux (0.3 m/s, 0.6 rad/s).
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      motion_model: "DiffDrive"
+      time_steps: 30                  # 3 s horizon. Gazebo config B used 40; raise only if no
+                                      # "Control loop missed its desired rate" on the Jetson
+      model_dt: 0.1                   # must equal 1 / controller_frequency (10 Hz)
+      batch_size: 500                 # Gazebo config B used 1000; Jetson CPU is shared
+      iteration_count: 1
+      vx_std: 0.15
+      wz_std: 0.3                     # scaled with wz_max (0.4 for 1.0 rad/s in Gazebo)
+      vx_max: 0.25                    # tested in Gazebo; <= 0.3 (smoother + mux cap)
+      vx_min: 0.0                     # no reversing: collision_monitor zones are front-only
+      wz_max: 0.6                     # = velocity_smoother and cmd_vel_mux angular limit
+      temperature: 0.3
+      gamma: 0.015
+      prune_distance: 1.7
+      transform_tolerance: 0.3        # same as the costmaps here
+      retry_attempt_limit: 1
+      visualize: false                # true publishes /trajectories for RViz (costs CPU)
+      critics: ["ConstraintCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic",
+                "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.4
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.5
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+      ObstaclesCritic:
+        enabled: true
+        cost_power: 1
+        repulsion_weight: 1.5
+        critical_weight: 20.0
+        consider_footprint: true      # this file uses a rectangular footprint
+        collision_cost: 10000.0
+        collision_margin_distance: 0.1
+        near_goal_distance: 0.5
+        inflation_radius: 0.6         # = inflation_layer of the local costmap below
+        cost_scaling_factor: 3.0      # = inflation_layer of the local costmap below
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 6.0              # config B (A: 14.0): lets MPPI cut NavFn's corners
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 3
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+        use_path_orientations: false
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0              # config B (A: 5.0)
+        offset_from_furthest: 5
+        threshold_to_consider: 1.4
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+        max_angle_to_furthest: 1.4    # config B (A: 1.0): turn while moving, no stop-and-turn
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: False
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      transform_tolerance: 0.3
+      rolling_window: true
+      width: 4
+      height: 4
+      resolution: 0.05
+      # P3-AT: 0.51 m long x 0.50 m wide (incl. wheels), base_link at the centre
+      footprint: "[[0.26, 0.25], [0.26, -0.25], [-0.26, -0.25], [-0.26, 0.25]]"
+      footprint_padding: 0.03
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          data_type: "LaserScan"
+          marking: True
+          clearing: True
+          max_obstacle_height: 2.0     # /scan is already cut to the robot's height band
+          obstacle_max_range: 3.5
+          obstacle_min_range: 0.0
+          raytrace_max_range: 4.0
+          raytrace_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.6
+        cost_scaling_factor: 3.0
+      always_send_full_costmap: True
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: False
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      transform_tolerance: 0.3
+      resolution: 0.05
+      footprint: "[[0.26, 0.25], [0.26, -0.25], [-0.26, -0.25], [-0.26, 0.25]]"
+      footprint_padding: 0.03
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_topic: /map                # RTAB-Map's grid; it grows as the robot explores
+        map_subscribe_transient_local: True
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          data_type: "LaserScan"
+          marking: True
+          clearing: True
+          max_obstacle_height: 2.0
+          obstacle_max_range: 3.5
+          obstacle_min_range: 0.0
+          raytrace_max_range: 4.0
+          raytrace_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.6
+        cost_scaling_factor: 3.0
+      always_send_full_costmap: True
+
+planner_server:
+  ros__parameters:
+    use_sim_time: False
+    expected_planner_frequency: 5.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      tolerance: 0.5
+      use_astar: false
+      allow_unknown: true              # the live map has gaps; let plans cross unknown cells
+
+smoother_server:
+  ros__parameters:
+    use_sim_time: False
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: True
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: False
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait"]
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors/DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors/Wait"
+    assisted_teleop:
+      plugin: "nav2_behaviors/AssistedTeleop"
+    global_frame: odom
+    robot_base_frame: base_link
+    transform_tolerance: 0.3
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 0.6
+    min_rotational_vel: 0.3
+    rotational_acc_lim: 1.5
+
+waypoint_follower:
+  ros__parameters:
+    use_sim_time: False
+    loop_rate: 20
+    stop_on_failure: false
+    waypoint_task_executor_plugin: "wait_at_waypoint"
+    wait_at_waypoint:
+      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
+      enabled: True
+      waypoint_pause_duration: 1000     # ms
+
+# controller + behaviours -> /cmd_vel_nav -> here -> /cmd_vel_smoothed -> collision_monitor.
+# Stops publishing velocity_timeout s after Nav2 goes quiet.
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: False
+    smoothing_frequency: 20.0
+    scale_velocities: False
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.3, 0.0, 0.6]
+    min_velocity: [-0.3, 0.0, -0.6]
+    max_accel: [0.5, 0.0, 1.5]
+    max_decel: [-0.8, 0.0, -2.0]
+    odom_topic: /rko_lio/odom
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+
+# Last Nav2 stage: /cmd_vel_smoothed -> here -> /cmd_vel_nav_safe -> cmd_vel_mux. Acts on the raw
+# /scan, independent of the costmaps and planner, so it also catches people stepping in front.
+# Humble semantics: a zone triggers when MORE than max_points scan points are inside it.
+#
+# Blind spot: pointcloud_to_laserscan drops returns closer than 0.4 m to base_link (range_min in
+# nav.launch.py), and the body reaches 0.26 m forward. So the zones only see from ~0.4 m out, and
+# the stop zone has to reach well past that to be useful.
+# Zones are front-only (x >= 0): the robot never reverses on a path (allow_reversing: false), and
+# BackUp checks the local costmap itself. A rear zone would freeze the robot against walls.
+collision_monitor:
+  ros__parameters:
+    use_sim_time: False
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    cmd_vel_in_topic: "cmd_vel_smoothed"
+    cmd_vel_out_topic: "cmd_vel_nav_safe"
+    transform_tolerance: 0.3
+    source_timeout: 0.6               # cmd_vel_mux also stops Nav2 if /scan is older than this
+    base_shift_correction: True
+    stop_pub_timeout: 2.0
+    polygons: ["PolygonStop", "PolygonSlow"]
+    # Stop: something within ~0.3 m of the front bumper (body front at x = 0.26, half-width 0.25)
+    PolygonStop:
+      type: "polygon"
+      points: [0.55, 0.32, 0.55, -0.32, 0.0, -0.32, 0.0, 0.32]
+      action_type: "stop"
+      max_points: 3
+      visualize: True
+      polygon_pub_topic: "polygon_stop"
+      enabled: True
+    # Slow to 40 %: something within ~0.75 m ahead or close beside the front half
+    PolygonSlow:
+      type: "polygon"
+      points: [1.0, 0.45, 1.0, -0.45, 0.0, -0.45, 0.0, 0.45]
+      action_type: "slowdown"
+      max_points: 3
+      slowdown_ratio: 0.4
+      visualize: True
+      polygon_pub_topic: "polygon_slowdown"
+      enabled: True
+    observation_sources: ["scan"]
+    scan:
+      type: "scan"
+      topic: "/scan"
+      enabled: True
