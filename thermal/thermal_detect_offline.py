@@ -5,10 +5,12 @@ Usage:
   python thermal_detect_offline.py captures/                 # every *_thermal_C.npy in the folder
   python thermal_detect_offline.py captures/x_thermal_C.npy  # a single file
 
-Same view and trackbars as thermal_detect_live.py.
+Same view, trackbars and toggles as thermal_detect_live.py.
 
 Keys:
   n  next file      b  previous file
+  t  toggle threshold mode adaptive <-> fixed
+  x  toggle rejected blobs      m  toggle the exclusion-zone panel
   p  print the current parameters as Python code to paste back as defaults
   q  quit
 """
@@ -22,7 +24,7 @@ import cv2
 import numpy as np
 
 import thermal_viz as viz
-from thermal_detector import DetectorParams, detect_with_mask
+from thermal_detector import DetectorParams, analyse
 
 
 def find_files(path):
@@ -39,39 +41,45 @@ def main():
     files = find_files(args.path)
     if not files:
         sys.exit(f"No *_thermal_C.npy files found at {args.path}")
-    print(f"{len(files)} file(s). Keys: n next, b back, p print params, q quit")
+    print(f"{len(files)} file(s). Keys: n next, b back, t mode, x rejected, m exclusion, p print params, q quit")
 
     base_params = DetectorParams()
-    viz.create_window(base_params)
+    state = {"index": 0, "loaded": None, "temp_c": None, "params": base_params, "last": None, "view": None}
 
-    index, loaded_index = 0, None
-    temp_c = last_params = None
+    def refresh():
+        """Redraw if the file or the parameters changed. Also called from the trackbar
+        callback, because on Windows the main loop is blocked while a slider is dragged."""
+        if state["index"] != state["loaded"]:
+            state["temp_c"] = np.load(files[state["index"]]).astype(np.float32)
+            state["loaded"] = state["index"]
+            state["last"] = None  # force a redraw
+        params = state["params"] = controls.read_params()
+        redraw_state = controls.state(params)
+        if redraw_state == state["last"]:
+            return
+        temp_c = state["temp_c"]
+        result = analyse(temp_c, params)
+        state["view"] = controls.render(temp_c, result, [
+            f"file {state['index'] + 1}/{len(files)}: {os.path.basename(files[state['index']])}",
+            f"max {temp_c.max():.1f} C",
+        ])
+        cv2.imshow(viz.WINDOW, state["view"])
+        state["last"] = redraw_state
+
+    controls = viz.Controls(base_params, on_change=refresh)
 
     while True:
-        if index != loaded_index:
-            temp_c = np.load(files[index]).astype(np.float32)
-            loaded_index = index
-            last_params = None  # force a redraw
-
-        params = viz.read_params(base_params)
-        if params != last_params:
-            detections, mask = detect_with_mask(temp_c, params)
-            view = viz.render(temp_c, detections, mask, [
-                f"file {index + 1}/{len(files)}: {os.path.basename(files[index])}",
-                f"{len(detections)} detections  |  max {temp_c.max():.1f} C",
-            ])
-            cv2.imshow(viz.WINDOW, view)
-            last_params = params
+        refresh()
 
         key = cv2.waitKey(30) & 0xFF
         if key == ord("q") or viz.window_closed():
             break
+        if controls.handle_key(key):
+            continue
         if key == ord("n"):
-            index = (index + 1) % len(files)
+            state["index"] = (state["index"] + 1) % len(files)
         elif key == ord("b"):
-            index = (index - 1) % len(files)
-        elif key == ord("p"):
-            print(viz.params_as_code(params))
+            state["index"] = (state["index"] - 1) % len(files)
 
     cv2.destroyAllWindows()
 
