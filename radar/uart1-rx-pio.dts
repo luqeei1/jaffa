@@ -1,0 +1,35 @@
+// uart1-rx-pio.dts - makes /dev/ttyTHS1 (40-pin header pins 8/10) receive without DMA.
+//
+// Why: on this Orin Nano (JetPack 6 / L4T R36.5) the UART's RX DMA hands back 0x00 for every
+// burst of 8+ bytes (a loopback of pins 8->10 returns zeros, except the last few bytes).
+// Short bursts arrive correctly, and those are read without DMA. The C4002 radar sends
+// 32-byte frames, so they all came through as zeros.
+//
+// How: the serial-tegra driver reads RX without DMA (PIO mode) when "dma-names" has no "rx"
+// entry. Renaming it keeps the "tx" entry (index 1) working, so TX still uses DMA.
+//
+// Install (needs sudo, then a reboot):
+//   sudo dtc -@ -I dts -O dtb -o /boot/uart1-rx-pio.dtbo radar/uart1-rx-pio.dts
+//   sudo cp /boot/extlinux/extlinux.conf /boot/extlinux/extlinux.conf.bak
+//   then add this line under "LABEL primary" in /boot/extlinux/extlinux.conf:
+//       OVERLAYS /boot/uart1-rx-pio.dtbo
+//   sudo reboot
+// Check after the reboot:
+//   tr '\0' ' ' < /proc/device-tree/bus@0/serial@3100000/dma-names    -> "rx-pio tx"
+// Undo: remove the OVERLAYS line (or restore extlinux.conf.bak) and reboot.
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	overlay-name = "UART1 (ttyTHS1) RX without DMA";
+	compatible = "nvidia,p3768-0000+p3767-0005-super", "nvidia,p3768-0000+p3767-0005",
+		     "nvidia,p3767-0005", "nvidia,tegra234";
+
+	fragment@0 {
+		target-path = "/bus@0/serial@3100000";
+		__overlay__ {
+			dma-names = "rx-pio", "tx";
+		};
+	};
+};
