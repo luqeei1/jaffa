@@ -15,6 +15,7 @@ the robot's height. Use scripts/run_slam.sh, which makes the run folder and keep
 """
 import os
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo,
                             RegisterEventHandler)
@@ -27,6 +28,14 @@ from launch_ros.substitutions import FindPackageShare
 VOXEL = 0.1  # m, ICP downsampling (RTAB-Map suggests 0.1-0.3 indoors)
 
 
+def default_run_dir():
+    """<slam workspace>/runs/latest, from <ws>/install/p3at_real/share/p3at_real."""
+    ws = get_package_share_directory('p3at_real')
+    for _ in range(4):
+        ws = os.path.dirname(ws)
+    return os.path.join(ws, 'runs', 'latest')
+
+
 def generate_launch_description():
     run_dir = LaunchConfiguration('run_dir')
 
@@ -34,7 +43,7 @@ def generate_launch_description():
         # De-skew each scan with the odometry (per-point `time`), then stack 1 s of them
         Node(package='rtabmap_util', executable='lidar_deskewing', name='lidar_deskewing',
              output='screen', remappings=[('input_cloud', '/unilidar/cloud')],
-             parameters=[{'fixed_frame_id': 'odom', 'wait_for_transform': 0.2, 'slerp': True}]),
+             parameters=[{'fixed_frame_id': 'odom', 'wait_for_transform': 0.6, 'slerp': True}]),  # >= one cloud period (0.3 s) + RKO-LIO time: the end-of-sweep pose only arrives with the next cloud
         Node(package='rtabmap_util', executable='point_cloud_assembler', name='cloud_assembler',
              output='screen', remappings=[('cloud', '/unilidar/cloud/deskewed')],
              parameters=[{'assembling_time': 1.0, 'fixed_frame_id': 'odom'}]),
@@ -66,6 +75,8 @@ def generate_launch_description():
                  # 2D occupancy grid (z in base_link, which is at axle height ~0.11 m above the floor)
                  'RGBD/CreateOccupancyGrid': 'true', 'Grid/Sensor': '0',
                  'Grid/CellSize': '0.05', 'Grid/RangeMax': '15', 'Grid/RayTracing': 'true',
+                 'Grid/RangeMin': '0.4',         # same cut as /scan + RKO-LIO: no robot body / lidar self-hits
+                                                 # (they inflate into a lethal blob under the robot -> no Nav2 plan)
                  'Grid/NormalsSegmentation': 'false',
                  'Grid/MaxGroundHeight': '-0.05',   # below: floor (free)
                  'Grid/MaxObstacleHeight': '0.35',  # up to robot height + margin: obstacle; above: ignored
@@ -89,7 +100,7 @@ def generate_launch_description():
         return [LogInfo(msg='RTAB-Map NOT started: no RKO-LIO odometry (see the wait_for_data error above)')]
 
     return LaunchDescription([
-        DeclareLaunchArgument('run_dir', default_value=os.path.expanduser('~/hcr_runs/latest')),
+        DeclareLaunchArgument('run_dir', default_value=default_run_dir()),
         DeclareLaunchArgument('kiss', default_value='false',
                               description='also run KISS-ICP for comparison (more CPU)'),
         DeclareLaunchArgument('map_save_period', default_value='15',

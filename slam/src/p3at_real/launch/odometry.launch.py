@@ -11,6 +11,7 @@ Use scripts/run_odometry.sh, which makes the run folder and keeps the console lo
 """
 import os
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo,
                             RegisterEventHandler)
@@ -30,7 +31,17 @@ RECORD_TOPICS = [
     '/cmd_vel_teleop', '/estop', '/cmd_vel_mux/active',  # cmd_vel_mux inputs + state
     '/scan', '/plan', '/cmd_vel_nav',             # Nav2, when nav.launch.py runs
     '/cmd_vel_smoothed', '/cmd_vel_nav_safe',     # smoother out, collision_monitor out
+    '/global_costmap/costmap', '/local_costmap/costmap',            # 1 Hz / 2 Hz, full grids
+    '/goal_pose', '/navigate_to_pose/_action/status',               # goals (status is a hidden topic)
 ]
+
+
+def default_run_dir():
+    """<slam workspace>/runs/latest, from <ws>/install/p3at_real/share/p3at_real."""
+    ws = get_package_share_directory('p3at_real')
+    for _ in range(4):
+        ws = os.path.dirname(ws)
+    return os.path.join(ws, 'runs', 'latest')
 
 
 def start_when_ready(waiter, actions, what):
@@ -50,7 +61,7 @@ def generate_launch_description():
     wait_for_lidar = Node(package='p3at_real', executable='wait_for_data.py', name='wait_for_lidar',
                           arguments=['lidar'], output='screen')
     return LaunchDescription([
-        DeclareLaunchArgument('run_dir', default_value=os.path.expanduser('~/hcr_runs/latest'),
+        DeclareLaunchArgument('run_dir', default_value=default_run_dir(),
                               description='Folder for the bag and odometry results'),
         # robot:=false = lidar + odometry only (no p2os / teleop), e.g. carrying the lidar by hand
         DeclareLaunchArgument('robot', default_value='true'),
@@ -93,8 +104,14 @@ def generate_launch_description():
 
         ExecuteProcess(
             condition=IfCondition(LaunchConfiguration('record')),
-            cmd=['ros2', 'bag', 'record', '-o', PathJoinSubstitution([run_dir, 'bag']),
-                 *RECORD_TOPICS],
+            cmd=['ros2', 'bag', 'record', '--include-hidden-topics',
+                 '-o', PathJoinSubstitution([run_dir, 'bag']), *RECORD_TOPICS],
             output='screen',
+        ),
+        # nav_goals.csv + trajectory.csv: plain-text summaries that survive an unclean shutdown
+        Node(
+            package='p3at_real', executable='run_logger.py', name='run_logger', output='screen',
+            condition=IfCondition(LaunchConfiguration('record')),
+            parameters=[{'run_dir': run_dir}],
         ),
     ])

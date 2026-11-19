@@ -38,7 +38,8 @@ ros2 run p3at_real run_slam.sh lab        # "lab" = run name; optional launch ar
 
 (`cmake --build slam/cmake-build --target run_slam` does the same, with the default run name.)
 
-Each run gets its own folder, `~/hcr_runs/<date>_<time>_<name>/` (also linked as `~/hcr_runs/latest`).
+Each run gets its own folder, `slam/runs/<date>_<time>_<name>/` (also linked as `slam/runs/latest`).
+See [runs/README.md](runs/README.md) for what is logged. Older runs are in `~/hcr_runs/`.
 
 Start-up order: lidar, then RKO-LIO once clouds are steady (15+ s after the L2 resets), then RTAB-Map
 once odometry is steady. **Keep the robot still until RKO-LIO prints
@@ -83,7 +84,37 @@ Nav2 ─► collision_monitor      ─► /cmd_vel_nav_safe (cap nav_max_linear 
 - Anything publishing straight to `/cmd_vel` bypasses all of this. Publish to `/cmd_vel_teleop` instead.
 - The laptop's copy of `remote_teleop.py` must be updated to get the E/U keys. An old copy still drives.
 
+## Go to a point relative to the start pose
+
+With SLAM and `nav.launch.py` running:
+
+```bash
+ros2 run p3at_real goto_point.py          # prompt: "x y [heading_deg]", x = forward, y = left (m)
+ros2 run p3at_real goto_point.py 2 -0.5   # one goal, then exit (exit code 0 = arrived)
+ros2 run p3at_real goto_point.py --listen # no prompt: goals from other nodes only
+```
+
+Coordinates are in a fixed frame: the robot's pose when the script starts, not its pose when you type the
+goal. `2 0` is always the same spot, 2 m in front of where the robot started. `0 0` drives it back to the
+start. Headings are measured from the start heading. At the prompt, `o` resets the start frame to
+where the robot is now, and `s` shows the robot and the goal in the start frame.
+
+It alerts (terminal + bell, and JSON on `/goto/status`) when the robot arrives, when the target is
+inside an obstacle, when no route exists (goal not sent), when an obstacle forces a detour, and while
+driving when `/scan` sees something on the path ahead (`OBSTACLE` / `CLEAR`). Other programs (e.g. the
+belief map) send goals as `geometry_msgs/PointStamped` on `/goto/goal` (`frame_id` empty
+or `start` = start frame, `base_link` = relative to the robot now, `map` = absolute) and cancel with `std_msgs/Empty` on `/goto/cancel`. Options and
+states: see the top of `scripts/goto_point.py`.
+
 Press `Ctrl-C` in the SLAM terminal to stop the launch.
+
+Closing a terminal or losing SSH can leave nodes running (two `p2os_driver`s, two odometries, two
+`cmd_vel_mux`es, ...), which breaks the next run. Before starting again, or whenever in doubt:
+
+```bash
+ros2 run p3at_real stop_all.sh            # Ctrl-C everything, wait 20 s, force the rest, check /dev/ttyUSB0
+ros2 run p3at_real stop_all.sh --dry-run  # only list what is running
+```
 
 ## Outputs
 
@@ -91,12 +122,16 @@ In the run folder:
 
 - `map2d.pgm` / `map2d.yaml`: 2D occupancy grid, saved every 15 s
 - `rtabmap.db`: keyframes + pose graph (open with `rtabmap-databaseViewer rtabmap.db`)
-- `bag/`: raw lidar + IMU, odometries, TF, cmd_vel
+- `bag/`: raw lidar + IMU, odometries, TF, cmd_vel, Nav2 costmaps + goals
+- `trajectory.csv`: SLAM pose, RKO-LIO and wheel odometry at 5 Hz
+- `nav_goals.csv`: one row per Nav2 goal (target, result, time, distance)
 - `rko_lio_run_*/`: RKO-LIO trajectory (written on Ctrl-C)
 - `console.log`, `ros_log/`
+
+Full list with rates and CSV columns: [runs/README.md](runs/README.md).
 
 Export the 3D point cloud and poses after Ctrl-C:
 
 ```bash
-ros2 run p3at_real export_slam.sh ~/hcr_runs/latest   # -> slam/rtabmap_cloud.ply, rtabmap_poses.txt
+ros2 run p3at_real export_slam.sh slam/runs/latest   # -> slam/rtabmap_cloud.ply, rtabmap_poses.txt
 ```

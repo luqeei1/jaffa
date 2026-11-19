@@ -6,7 +6,7 @@ path length, final pose, and the start-to-end gap. Drive a loop and stop where y
 (mark the floor), and that gap is each method's drift. Each map is every lidar scan placed at
 that method's pose: a good odometry gives sharp walls, drift shows as doubled / smeared walls.
 
-  ros2 run p3at_real odom_compare.py ~/hcr_runs/latest      # run folder (or its bag/)
+  ros2 run p3at_real odom_compare.py slam/runs/latest       # run folder (or its bag/)
         [--voxel 0.05] [--every 1] [--no-map]
 
 Writes into the run folder:

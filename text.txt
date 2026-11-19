@@ -1,0 +1,39 @@
+run_odometry.sh: makes a dated folder under ~/hcr_runs/, points ~/hcr_runs/latest at it, and logs the whole run to it. It calls ros2 launch p3at_real odometry.launch.py, or whatever launch file is in $LAUNCH, and copies the console to console.log with tee.
+run_slam.sh: the same thing for a full SLAM run. It calls run_odometry.sh with LAUNCH=slam.launch.py.
+wait_for_data.py: exits once /unilidar/cloud (lidar mode) or /rko_lio/odom (odom mode) has been streaming steadily for 2 s, so the next stage only starts on real data. It subscribes to that topic, and odometry.launch.py and slam.launch.py start it.
+Driving and safety (on the Jetson)
+
+cmd_vel_mux.py: the only node allowed to publish /cmd_vel. It picks teleop over Nav2, caps each input's speed, holds a latching e-stop, and stops Nav2 when /scan goes stale.
+Subscribes to /cmd_vel_teleop, /cmd_vel_nav_safe, /estop and /scan.
+Publishes /cmd_vel and /cmd_vel_mux/active.
+Calls the Nav2 cancel-goal services when the e-stop is pressed.
+Started by robot.launch.py.
+teleop_receiver.py: the robot end of network teleop; it turns UDP packets from the laptop into velocity commands and an e-stop.
+Listens on UDP port 9870.
+Publishes /cmd_vel_teleop and /estop.
+Reads /odom, /battery_state and the mux status, and sends them back to the laptop.
+Started by robot.launch.py.
+Teleop clients
+
+remote_teleop.py: the laptop end of network teleop, a small Tk window for driving with WASD (needs no ROS install, so it runs on Windows). It sends UDP packets to teleop_receiver.py and shows the battery and speeds it sends back.
+wasd_teleop.py: a Tk WASD teleop for a machine that has ROS. It publishes /cmd_vel_teleop and /estop directly.
+Lidar diagnostics
+
+check_lidar.py: checks that the lidar, IMU, odometry and map are publishing sensible data, and prints PASS/WARN/FAIL for each check. It subscribes to /unilidar/cloud, /unilidar/imu, /odom, /kiss/odometry, /rko_lio/odom and /map, and reads TF.
+check_lidar_network.sh: checks the Ethernet path from the L2 to the Jetson: address, link, port owner, and the packets that actually arrive. It calls ip, nmcli, sudo ss and sudo tcpdump on enP8p1s0.
+l2_packet_dump.py: decodes the L2's raw UDP packets (point counts, ranges, the lidar's own health readings) for when clouds come through empty. It opens a raw socket on UDP port 6202, so the driver has to be stopped first; it doesn't use ROS.
+Driver patches
+
+apply_patches.sh: applies the local fixes to the third-party driver submodules and is safe to run twice. It runs git apply with patches/p2os2_cmd_vel_resend.patch on p2os2, then calls patch_unilidar_driver.sh.
+patch_unilidar_driver.sh: makes the L2 driver start the lidar in this order: start rotation, set work mode, reset. Without that order the L2 returned all-zero ranges. It edits unitree_lidar_ros2.h with sed.
+Robot hardware tests
+
+drive_check.py: records commanded speed against actual wheel speed while you drive, to measure lag and stalls. It subscribes to /cmd_vel and /odom and writes drive_check.png and drive_check.csv.
+wheel_test.py: drives the left and right sides separately ("tank mode") and checks each side's measured speed against the command, with the wheels off the ground.
+Publishes /wheel_cmd and /cmd_motor_state, and reads /motor_stall and /motor_state.
+Needs robot.launch.py enable_wheel_cmd:=true.
+After the first command, the driver ignores /cmd_vel until it is restarted.
+After a run (offline)
+
+odom_compare.py: compares the three odometries (LIO, KISS-ICP, wheels) from a run's bag, giving drift, paths, and a point-cloud map from each one's poses. It reads the bag with rosbag2_py and writes TUM files, PNGs and PLYs into the run folder.
+export_slam.sh: exports a run's rtabmap.db to a 3D point cloud (.ply) and the keyframe poses (TUM format). It calls rtabmap-export twice.

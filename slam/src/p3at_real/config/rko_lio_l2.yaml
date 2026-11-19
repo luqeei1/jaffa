@@ -10,7 +10,7 @@
     base_frame: base_link
     odom_frame: odom
     odom_topic: /rko_lio/odom
-    deskew: true
+    deskew: false
     voxel_size: 0.3        # default 1.0 is for outdoor; rooms here are < 30 m
     max_range: 30.0        # L2 spec range
     min_range: 0.4         # drop returns from the robot's own body

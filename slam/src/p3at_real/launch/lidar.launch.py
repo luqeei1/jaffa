@@ -12,6 +12,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 MOUNT = {'lidar_x': '0.0', 'lidar_y': '0.0', 'lidar_z': '0.30',
          'lidar_roll': '0.0', 'lidar_pitch': '0.0', 'lidar_yaw': '0.0'}
@@ -31,6 +32,12 @@ def generate_launch_description():
         DeclareLaunchArgument('local_port', default_value='6202',
                               description='Jetson UDP port the lidar sends to'),
         *[DeclareLaunchArgument(k, default_value=v) for k, v in MOUNT.items()],
+        # Scan packets per published cloud; each is ~5.6 ms of the L2's sweep (18 = 0.1 s, 54 = 0.3 s).
+        # 0.1 s clouds are too sparse for RKO-LIO / KISS-ICP: on a stationary robot both spun up to
+        # ~10 deg/s (point-to-point ICP locks onto the L2's rotating scan pattern instead of the walls).
+        # Offline on a still bag (2026-11-18), 115 s: 18 -> -382 deg, 54 -> -5..-11 deg, 90 -> ~1 deg.
+        # Keep <= ~80: wait_for_data.py needs a cloud every 0.5 s.
+        DeclareLaunchArgument('cloud_scan_num', default_value='54'),
 
         Node(
             package='unitree_lidar_ros2', executable='unitree_lidar_ros2_node',
@@ -40,9 +47,12 @@ def generate_launch_description():
                 'initialize_type': 2,  # UDP
                 'work_mode': 0,
                 'use_system_timestamp': True,  # cloud and IMU on the Jetson clock
-                'range_min': 0.0,
+                # Drop self-hits: with 54-scan clouds the L2 returns ~20 points/cloud at 7-28 cm,
+                # ~5 cm above the sensor (its own housing / mount), which RTAB-Map's grid marked as
+                # obstacles under the robot, so NavFn had no free start cell (2026-11-19).
+                'range_min': 0.3,
                 'range_max': 50.0,
-                'cloud_scan_num': 18,
+                'cloud_scan_num': ParameterValue(LaunchConfiguration('cloud_scan_num'), value_type=int),
                 'lidar_ip': LaunchConfiguration('lidar_ip'),
                 'lidar_port': LaunchConfiguration('lidar_port'),
                 'local_ip': LaunchConfiguration('local_ip'),

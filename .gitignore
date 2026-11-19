@@ -10,3 +10,7 @@ marco_audio/recordings/live_*/audio_f32_6ch.raw
 /slam/install/
 /slam/log/
 /slam/cmake-build/
+
+# Run logs (bags, maps, CSVs): kept on the robot, not in git
+/slam/runs/*
+!/slam/runs/README.md
