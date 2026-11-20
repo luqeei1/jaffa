@@ -100,6 +100,27 @@ xs = np.arange(MAP_MIN_X, MAP_MAX_X + RESOLUTION, RESOLUTION)
 ys = np.arange(MAP_MIN_Y, MAP_MAX_Y + RESOLUTION, RESOLUTION)
 XX, YY = np.meshgrid(xs, ys)
 
+
+def configure_grid(min_x, max_x, min_y, max_y, resolution):
+    """Re-define the shared grid, e.g. to cover a SLAM map frame that starts at the robot.
+
+    Every function in this module reads xs, ys, XX and YY when it is called, so call
+    this once before creating a BeliefMapFilter. Modules that copied the arrays with
+    ``from sensor_fusion.sensor_fusion import XX`` keep the old grid.
+    Returns the new (xs, ys) cell-centre coordinates.
+    """
+    global MAP_MIN_X, MAP_MAX_X, MAP_MIN_Y, MAP_MAX_Y, RESOLUTION, xs, ys, XX, YY
+    values = [float(v) for v in (min_x, max_x, min_y, max_y, resolution)]
+    if (not all(np.isfinite(values)) or values[4] <= 0
+            or values[1] <= values[0] or values[3] <= values[2]):
+        raise ValueError("grid needs finite bounds with max > min and a positive resolution")
+    MAP_MIN_X, MAP_MAX_X, MAP_MIN_Y, MAP_MAX_Y, RESOLUTION = values
+    xs = np.arange(MAP_MIN_X, MAP_MAX_X + RESOLUTION, RESOLUTION)
+    ys = np.arange(MAP_MIN_Y, MAP_MAX_Y + RESOLUTION, RESOLUTION)
+    XX, YY = np.meshgrid(xs, ys)
+    return xs, ys
+
+
 def normalise(grid):
     """Normalise a non-negative grid so that its sum is one."""
     total = np.sum(grid)
