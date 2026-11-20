@@ -1,0 +1,89 @@
+# Parameters for the integration demo (search_demo.launch.py). Every value here is also the
+# node's built-in default unless marked; change them here or with  ros2 param set  while running.
+
+belief_node:
+  ros__parameters:
+    map_frame: map
+    # Belief grid in the SLAM map frame. The map frame starts where SLAM started (x forward, y left),
+    # so the grid has to reach behind and beside the start too. 16 x 16 m at 5 cm = 320 x 320 cells.
+    grid_min_x: -6.0
+    grid_max_x: 10.0
+    grid_min_y: -8.0
+    grid_max_y: 8.0
+    resolution: 0.05
+    diffusion: 0.01                 # per update: lets the belief spread slowly (child may move)
+    half_life_s: 0.0                # > 0: old evidence fades with this half-life
+    # Polo
+    accept_unclassified: false      # true = any sound with a direction counts (use if Vosk is not installed)
+    polo_requires_sensing: true     # only Polos that start while the robot is sensing (answers to "Marco")
+    sensing_margin_s: 0.3
+    audio_max_reliability: 0.8      # cap on how much one bearing counts against uniform clutter
+    # Camera
+    camera_min_confidence: 0.4
+    camera_outside_sensing: true    # people seen while driving also count (every camera_update_period_s)
+    camera_update_period_s: 2.0
+    apply_misses: true              # nobody seen during a sensing stop -> less likely inside the view
+    miss_p_detect: 0.5
+    miss_min_range_m: 0.5
+    miss_max_range_m: 3.5
+    summary_radius_m: 0.75
+    viz_ratio_max: 20.0             # /marco/belief/grid: 100 = 20x the uniform probability
+
+person_node:
+  ros__parameters:
+    source: realsense               # realsense | sim (launch sets sim when sim:=true)
+    run_when: sensing               # sensing = YOLO only while stopped; always = every frame
+    max_rate_hz: 5.0
+    frame_id: camera_color_optical_frame
+    max_range_m: 5.0
+    model_path: ""                  # empty = rgbd/scripts/yolo26n.pt, ~/marco_ws/models/yolo26n.pt, ...
+    conf: 0.3
+    imgsz: 640                      # 480 or 320 is faster on the Jetson CPU
+    device: cpu                     # "0" for the Jetson GPU if torch has CUDA
+    width: 640
+    height: 480
+    fps: 30
+    publish_image: true
+    image_rate_hz: 2.0
+    jpeg_quality: 70
+
+search_manager:
+  ros__parameters:
+    map_frame: map
+    base_frame: base_link
+    autostart: false                # true = start searching as soon as TF and the belief map are up
+    use_costmap: true               # move goals out of obstacles using /global_costmap/costmap
+    search:
+      move_period_s: 5.0            # stop and sense at least this often while driving
+      settle_s: 0.8
+      call_marco: true
+      marco_clip: marco
+      found_clip: found_you
+      speech_start_timeout_s: 1.5
+      speech_max_s: 6.0
+      listen_s: 3.0                 # how long the child has to answer after "Marco"
+      kws_delay_s: 1.3              # audio_node publishes a keyword ~1.1 s after it was spoken
+      belief_wait_s: 2.0
+      no_goal_pause_s: 1.0
+      goal_ack_timeout_s: 8.0
+      max_failures: 3
+      found_distance_m: 1.6         # a person this close in front of the camera = found
+      found_confidence: 0.5
+      found_frames: 2
+      reset_belief_on_start: true
+    planner:
+      min_peak_ratio: 3.0
+      localised_radius_m: 0.75
+      localised_mass: 0.25
+      standoff_m: 1.0               # stop this far short of where the child is believed to be
+      explore_step_m: 1.5
+      explore_max_range_m: 8.0
+      angle_bin_deg: 10.0
+      look_heading_tol_deg: 30.0
+      min_goal_distance_m: 0.4
+      scan_when_no_evidence: true   # no Polo yet: turn and creep so the camera sees somewhere new
+      scan_turn_deg: 60.0
+      scan_step_m: 0.5
+      free_cost_max: 60
+      allow_unknown: true
+      goal_search_radius_m: 1.0
