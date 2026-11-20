@@ -532,6 +532,7 @@ Without them everything else still works, and the `keyword` field of the message
 **Window 1:**
 
 ```
+python3 -c "import requests, cffi; print('ok')"
 python3 -m pip install --user --no-deps vosk srt tqdm
 mkdir -p ~/marco_ws/models
 cd ~/marco_ws/models
@@ -540,7 +541,7 @@ python3 -m zipfile -e vosk-model-small-en-us-0.15.zip .
 ls vosk-model-small-en-us-0.15
 ```
 
-The last line must print `README  am  conf  graph  ivector`.
+The first line must print `ok` and the last line must print `README  am  conf  graph  ivector`.
 
 Then check the recogniser starts and knows both words.
 

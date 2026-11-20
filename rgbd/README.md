@@ -69,6 +69,24 @@ python -m pytest tests -v                             # run the tests
 
 `detect_live` keys: `q` quit, `space` pause, `d` toggle depth view, `s` save `snapshots/det_<time>_color.png`, `_annotated.png`, `_depth.npy`.
 
+For a stationary camera, run from the repository root to print RGB-D belief-map estimates:
+
+```powershell
+python -m rgbd.scripts.detect_live --fusion-camera-to-map camera_to_map.npy
+```
+
+Supply a calibrated 4×4 NumPy matrix that maps optical coordinates (right, down, forward) to the fusion map (horizontal X/Y, metres). Use `--bag` for a recording made with that same fixed camera pose. The demo updates the belief with a measurement when the frame contains exactly one person with usable depth. Other frames run the prediction step only. The prototype grid spans X = 0–8 m and Y = 0–6 m.
+
+To replay a recording from a moving robot, run from the repository root:
+
+```powershell
+python -m rgbd.scripts.detect_live --bag run.db3 --fusion-camera-to-base camera_to_base.npy --fusion-poses poses.csv
+```
+
+`camera_to_base.npy` is the calibrated 4×4 camera optical-to-robot-base transform. The pose CSV has header `stamp_ms,x_m,y_m,yaw_rad` and increasing timestamps on the same clock as the recording's colour-frame timestamps. X and Y are map coordinates in metres, and yaw is in radians about map Z. The replay assumes a level robot on a flat floor. It interpolates between poses up to 250 ms apart by default (`--fusion-max-pose-gap-ms`), and uses prediction only when the capture time has no pose coverage. The viewer's `--print` flag shows the capture timestamps.
+
+For live motion, look up the camera optical-to-map transform from the robot's pose source (for example ROS TF) at image capture time. Pass it to `rgbd_position_observation(frame, camera_to_map)`, then pass that result as `visible` to `BeliefMapFilter.update_from_observations()` with the corresponding robot pose. The map peak is a search location. The navigation planner must choose a reachable goal using its own current robot pose.
+
 The `recordings` folder must exist before you record (`mkdir recordings`). pyrealsense2 2.59 only records to `.db3` (a `.bag` path is refused), so recordings use that extension.
 
 ## Viewer controls

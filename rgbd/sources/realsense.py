@@ -8,7 +8,10 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 
-from core.types import Intrinsics
+if __package__ == "rgbd.sources":
+    from ..core.types import Intrinsics
+else:
+    from core.types import Intrinsics
 
 
 def intrinsics_from_rs(rs_intr):
@@ -104,19 +107,28 @@ class RealSenseSource:
 
     def read(self):
         """Return (color_bgr uint8, depth_m float32, timestamp_ms, frame_number), or None at end of bag."""
+        while (frames := self.read_frames()) is not None:
+            decoded = self.decode_frames(frames)
+            if decoded is not None:
+                return decoded
+        return None
+
+    def read_frames(self):
         if not self._started:
             raise RuntimeError("RealSenseSource.read() called before start()")
+        return self._wait()
 
-        while True:
-            frames = self._wait()
-            if frames is None:
-                return None
-            aligned = self._align.process(frames)
-            color_frame = aligned.get_color_frame()
-            depth_frame = aligned.get_depth_frame()
-            if color_frame and depth_frame:
-                break
+    def decode_frames(self, frames):
+        aligned = self._align.process(frames)
+        color_frame = aligned.get_color_frame()
+        depth_frame = aligned.get_depth_frame()
+        if not color_frame or not depth_frame:
+            return None
+        depth_m = np.asanyarray(depth_frame.get_data()).astype(np.float32) * self.depth_scale
+        return self.color_image(color_frame), depth_m, color_frame.get_timestamp(), color_frame.get_frame_number()
 
+    @staticmethod
+    def color_image(color_frame):
         color = np.asanyarray(color_frame.get_data())
         fmt = color_frame.get_profile().format()
         if fmt == rs.format.rgb8:
@@ -126,9 +138,7 @@ class RealSenseSource:
         else:
             raise RuntimeError(f"Unsupported colour format: {fmt}")
 
-        depth_m = np.asanyarray(depth_frame.get_data()).astype(np.float32) * self.depth_scale
-
-        return color, depth_m, color_frame.get_timestamp(), color_frame.get_frame_number()
+        return color
 
     def _wait(self):
         """Wait for a frameset. Returns None when bag playback has finished."""

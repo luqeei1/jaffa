@@ -17,7 +17,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from sources import RealSenseSource
+if __package__ == "rgbd.scripts":
+    from ..sources import RealSenseSource
+else:
+    from sources import RealSenseSource
 
 WINDOW = "Marco RGB-D viewer"
 DEPTH_MIN_M = 0.3
