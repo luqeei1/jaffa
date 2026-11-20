@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop every robot / SLAM / Nav2 / Foxglove process on the Jetson, including ones orphaned by a
+# Stop every robot / SLAM / Nav2 / Foxglove / marco_search process on the Jetson, including ones orphaned by a
 # closed terminal or SSH session, so the next run starts clean.
 #
 #   ros2 run p3at_real stop_all.sh            # Ctrl-C everything, wait, then force what is left
@@ -18,13 +18,16 @@ DRY=0
 [[ ${1:-} == --dry-run || ${1:-} == -n ]] && DRY=1
 
 # Launchers / wrappers: stopping these first lets ros2 launch stop its own children.
-LAUNCHERS='run_slam\.sh|run_odometry\.sh|ros2 launch (p3at_real|foxglove_bridge)|ros2 bag record'
+LAUNCHERS='run_slam\.sh|run_odometry\.sh|ros2 launch (p3at_real|foxglove_bridge|marco_search|marco_audio)|ros2 bag record'
 # Everything our launch files start (robot, lidar, odometry, SLAM, Nav2, Foxglove, logging).
 NODES='cmd_vel_mux\.py|teleop_receiver\.py|wasd_teleop\.py|run_logger\.py|wait_for_data\.py'
 NODES+='|p2os_driver/p2os_driver|unitree_lidar_ros2_node|static_transform_publisher.*unilidar'
 NODES+='|rko_lio/online_node|kiss_icp_node|rtabmap_slam/rtabmap|rtabmap_util/|map_saver_cli'
 NODES+='|pointcloud_to_laserscan_node|nav2_[a-z_]+/[a-z_]+|foxglove_bridge/foxglove_bridge'
 NODES+='|ros2 bag record'
+# marco_search demo (search_demo.launch.py): search loop, belief map, camera, ears + voice, goto
+NODES+='|marco_search/(belief_node|person_node|search_manager|sim_world)|marco_audio/(audio_node|speech_node)'
+NODES+='|goto_point\.py|static_transform_publisher.*(camera_link|mic_array_link)'
 
 # PIDs matching a pattern, minus this script and its parents (ros2 run, the shell).
 find_pids() {

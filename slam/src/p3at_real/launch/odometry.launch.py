@@ -33,6 +33,11 @@ RECORD_TOPICS = [
     '/cmd_vel_smoothed', '/cmd_vel_nav_safe',     # smoother out, collision_monitor out
     '/global_costmap/costmap', '/local_costmap/costmap',            # 1 Hz / 2 Hz, full grids
     '/goal_pose', '/navigate_to_pose/_action/status',               # goals (status is a hidden topic)
+    '/goto/goal', '/goto/status',                                   # goto_point.py requests + alerts
+    # marco_search demo (standard message types only, so the recorder needs no Marco workspace)
+    '/marco/search/state', '/marco/search/phase', '/marco/search/events', '/marco/search/goal',
+    '/marco/search/sensing', '/marco/belief/grid', '/marco/belief/estimate', '/marco/belief/summary',
+    '/marco/speech/say', '/marco/speech/active', '/diagnostics',
 ]
 
 
