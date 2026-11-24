@@ -25,8 +25,7 @@ from std_msgs.msg import String                     # noqa: E402
 
 sp = importlib.import_module("marco_audio.speech_node")
 results = []
-PY = sys.executable
-# pretend players: wait 0.15 s / fail at once / never finish
+PY = sys.executable.replace("\\", "/")
 WAIT = f'{PY} -c "import time; time.sleep(0.15)"'
 FAIL = f'{PY} -c "import sys; sys.stderr.write(\'no such device\'); sys.exit(3)"'
 HANG = f'{PY} -c "import time; time.sleep(60)"'
