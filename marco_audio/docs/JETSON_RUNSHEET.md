@@ -434,6 +434,7 @@ instead lists all of them.
 | `speech` | `true` | `false` = ears only |
 | `keywords` | `auto` | `auto` = spot "marco" / "polo" if the speech recogniser is installed. `false` = directions only. `true` = stop with an error if it is missing |
 | `kws_min_conf` | `0.6` | a word the recogniser is less sure of than this is not counted. `kws_min_conf:=0.4` catches more words and makes more mistakes |
+| `voice_post_ms` | `30` | a recognised "marco" or "polo" gets its direction measured again, from 5 ms before to this many ms after the word starts, with a confidence made for voices (README section 10). `voice_post_ms:=0` = words are measured like claps (the 18 Nov behaviour) |
 | `publish_tf` | `true` | `false` if another node already publishes `base_link -> mic_array_link` |
 | `mic_x` `mic_y` `mic_z` `mic_yaw_deg` | `0` | where the board is on the robot (section 4) |
 | `sound_topic` | `/marco/audio/sound_event` | publish the sounds somewhere else |

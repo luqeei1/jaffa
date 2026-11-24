@@ -123,5 +123,28 @@ lsb = np.array([[1, -1, 1, -1]] * 100, dtype=np.int16)
 check("level_dbfs reads int16 counts (+-1 LSB ~ -90 dBFS)", -95 < dp.level_dbfs(lsb) < -85,
       f"{dp.level_dbfs(lsb):.1f} dBFS")
 
+# Voice score for the game words (24 Nov 2026) ------------------------------------------------
+vc = dp.voice_confidence
+deg = np.radians
+check("voice score: 1 at an error bar of 5 deg or less, 0.5 at 10 deg, 0 at 15 deg or more",
+      abs(vc(deg(2.0), 1.0) - 1.0) < 1e-9 and abs(vc(deg(5.0), 1.0) - 1.0) < 1e-9
+      and abs(vc(deg(10.0), 1.0) - 0.5) < 1e-9 and vc(deg(15.0), 1.0) < 1e-9 and vc(np.pi, 1.0) == 0.0)
+check("voice score: an impossible |u| (s_u = 0) gives 0, half-possible halves it",
+      vc(deg(3.0), 0.0) == 0.0 and abs(vc(deg(3.0), 0.5) - 0.5) < 1e-9)
+check("voice score: a missing error bar gives 0, not an error", vc(float("nan"), 1.0) == 0.0)
+check("voice window is 5 ms before to 30 ms after the start", dp.VOICE_WIN_MS == (5.0, 30.0))
+pre, post = (int(round(ms * dp.FS / 1000)) for ms in dp.VOICE_WIN_MS)
+word = delayed_copies(burst, 120.0, 30.0)[200 - pre:200 + post]   # a clean "word" from 120 deg, 30 deg up
+rv = dp.localise(word)
+fields_v = dp.voice_event_fields(rv)
+check("voice_event_fields: one score per method, each between 0 and 1",
+      set(fields_v) == {"gcc_phat", "gcc_robust", "srp_phat"} and all(0.0 <= v <= 1.0 for v in fields_v.values()))
+check("a clean sound over the voice window: right angle, voice score near 1",
+      abs(dp.angle_error_deg(rv["gcc_robust"]["azimuth_rad"], np.radians(120.0))) < 1.0
+      and fields_v["gcc_robust"] > 0.9,
+      f"{np.degrees(rv['gcc_robust']['azimuth_rad']):.1f} deg, score {fields_v['gcc_robust']:.2f}")
+check("voice_event_fields: gcc_robust uses its own s_u",
+      abs(fields_v["gcc_robust"] - vc(rv["gcc_robust"]["azimuth_std_rad"], rv["gcc_robust"]["s_u"])) < 1e-12)
+
 print("\nALL PASSED" if failures == 0 else f"\n{failures} FAILED")
 sys.exit(1 if failures else 0)

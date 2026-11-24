@@ -14,6 +14,9 @@ For one sound event (a short window of the 4 raw mic channels, ch2-ch5):
                      There are no per-pair decisions, so one bad pair can't drag the answer away.
   gcc_event_fields() / srp_event_fields()
                      Convert a result into SoundEvent fields: azimuth_rad, azimuth_std_rad, confidence.
+  voice_confidence() / voice_event_fields()
+                     A second confidence score for the game words ("marco", "polo"), measured over
+                     the longer voice window VOICE_WIN_MS (24 Nov 2026, see below).
 
 Conventions (identical to mic_array.py, verified with claps on 24 Oct 2026):
   Board flat, logo up. x points out of the USB edge (0 deg); angles increase anticlockwise seen from
@@ -374,6 +377,45 @@ def srp_event_fields(srp: SrpResult, pr: PairResult, mic_xy=MIC_XY, c=SPEED_OF_S
         std = np.pi                                         # no usable agreement: "anywhere"
     return dict(azimuth_rad=srp.azimuth, azimuth_std_rad=float(std), confidence=float(conf),
                 s_peak=s_peak, s_contrast=s_contrast, n_inliers=int(len(inl)))
+
+
+# --------------------------------------------------------------------------------------------
+# Step 4b: the game words "marco" and "polo" - a voice window and a voice score (24 Nov 2026)
+# --------------------------------------------------------------------------------------------
+# The window and the score above were set on claps. A clap is a sharp crack, so its first 2 ms
+# give six delays that agree. The "P" of "Polo" starts softly, so in the same 2 ms the delays
+# come out blurred: on the 17 Nov "Polo!" run (24 words, 1 m) 7 of 24 directions were more than
+# 10 deg off, and the clap score kept only 5 words, 3 of them the wrong ones.
+# Once the keyword spotter has recognised a game word, its direction is measured again over
+# VOICE_WIN_MS, and it is scored from its own error bar (azimuth_std) instead. On that run:
+# 3 of 24 more than 10 deg off (worst 15.8 deg instead of 34.1), and 21 of 24 scored 0.5 or more,
+# 19 of them within 10 deg. Both numbers below were chosen on that same run, so they still have to
+# be checked on a new recording. Claps and every other sound keep the window and score above.
+VOICE_WIN_MS = (5.0, 30.0)    # ms before / after the start of the word
+VOICE_STD_DEG = (5.0, 15.0)   # error bar (1 sigma) at which the voice score is 1 / falls to 0;
+                              # it passes 0.5 at +-10 deg
+
+
+def voice_confidence(azimuth_std_rad: float, s_u: float, std_deg=VOICE_STD_DEG) -> float:
+    """Confidence for a game word: 1 when its error bar is std_deg[0] or tighter, 0 when it is
+    std_deg[1] or wider, a straight line in between - times s_u, the "is |u| physically possible"
+    score of gcc_event_fields(). The error bar already grows when the six delays disagree, so it
+    carries the same evidence as the clap score's agreement check, on a scale that suits voices."""
+    std = float(np.degrees(azimuth_std_rad))
+    if not (np.isfinite(std) and np.isfinite(s_u)):
+        return 0.0
+    good, bad = std_deg
+    return float((1.0 - _ramp(std, good, bad)) * s_u)
+
+
+def voice_event_fields(res: dict) -> dict:
+    """Voice confidence for each method of one localise() result: {method: confidence}.
+    SRP-PHAT has no |u| of its own, so it borrows the plain least-squares fit's s_u.
+    Checked on real words for gcc_robust (the default) only."""
+    s_u_fit = res["gcc_phat"]["s_u"]
+    return {"gcc_phat": voice_confidence(res["gcc_phat"]["azimuth_std_rad"], s_u_fit),
+            "gcc_robust": voice_confidence(res["gcc_robust"]["azimuth_std_rad"], res["gcc_robust"]["s_u"]),
+            "srp_phat": voice_confidence(res["srp_phat"]["azimuth_std_rad"], s_u_fit)}
 
 
 # --------------------------------------------------------------------------------------------

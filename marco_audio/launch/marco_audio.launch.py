@@ -24,6 +24,9 @@ Run it (after "colcon build" and "source install/setup.bash")
     ros2 launch marco_audio marco_audio.launch.py keywords:=false
         directions only: do not try to recognise the words "marco" and "polo"
 
+    ros2 launch marco_audio marco_audio.launch.py voice_post_ms:=0
+        words are recognised, but their direction is measured like a clap's (the 18 Nov behaviour)
+
     ros2 launch marco_audio marco_audio.launch.py --show-args
         lists every setting below with its default value
 
@@ -93,6 +96,9 @@ ARGS = [
      "the Vosk model folder. Empty = look in the usual places, first ~/marco_ws/models"),
     ("kws_min_conf", "0.6",
      "a word the recogniser is less sure of than this (0 to 1) is not counted"),
+    ("voice_post_ms", "30",
+     "a marco or polo gets its direction measured again, up to this many ms after the word "
+     "starts, and a confidence made for voices. 0 = off (words are treated like claps)"),
 ]
 
 
@@ -156,6 +162,7 @@ def _setup(context, *args, **kwargs):
     keywords = _text(context, "keywords").lower()
     audio["keywords"] = "auto" if keywords == "auto" else _yes_no(context, "keywords")
     audio["kws_min_conf"] = _number(context, "kws_min_conf")
+    audio["voice_post_ms"] = _number(context, "voice_post_ms")
     kws_model = _text(context, "kws_model")
     if kws_model:                                # empty = let audio_node look in the usual places
         audio["kws_model"] = kws_model

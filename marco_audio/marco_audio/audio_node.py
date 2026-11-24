@@ -13,6 +13,12 @@ What it does
     hear the whole word first, so each message then goes out about a second after its sound
     started. The time stamp inside the message is still the moment the sound started.
 
+    A game word gets its direction measured a second time. The first look uses only the first
+    2 ms of a sound, which suits a sharp clap; the soft "P" of "Polo" needs longer. So once the
+    word is recognised, its direction is measured again from 5 ms before to 30 ms after its
+    start (voice_post_ms), and its confidence comes from that direction's own error bar
+    (tools/doa_phat.py, voice_confidence). Claps and all other sounds keep the first look.
+
     The listening and the direction finding are NOT re-written here. This file imports the
     Listener class from tools/live_doa.py - the code the live clap test used - so a sound gets
     the same answer here as it did there.
@@ -61,6 +67,9 @@ Parameters (add them after --ros-args as  -p name:=value)
     kws_min_conf         a word the recogniser is less sure of than this is ignored (default 0.6)
     kws_post_s           how much sound after the start of a sound the recogniser gets
                          (default 1.0 s). Longer = later messages
+    voice_post_ms        for a "marco" or "polo": how far after the start of the word its
+                         direction is measured the second time, in ms (default 30; it starts
+                         5 ms before). 0 = off: game words keep the first look, like claps
 """
 import math
 import os
@@ -68,6 +77,8 @@ import queue
 import sys
 import time
 from pathlib import Path
+
+import numpy as np
 
 # The analysis scripts import matplotlib for their figures. "Agg" means "draw to files only",
 # so nothing here ever tries to open a window (the robot has no screen).
@@ -107,6 +118,7 @@ TOOLS_DIR = _find_tools()
 import live_doa as ld      # noqa: E402  (must come after _find_tools)
 import mic_array as ma     # noqa: E402
 import keyword_spotter as ks   # noqa: E402  (loads the recogniser only when it is switched on)
+import doa_phat as dp      # noqa: E402
 
 FS = ma.FS
 BLOCK = 320                                   # 20 ms of audio, the block size live_doa.py uses
@@ -164,6 +176,9 @@ class AudioNode(Node):
         kws_min_conf = float(self._param("kws_min_conf", ks.MIN_CONF))
         self.kws_pre = int(ks.PRE_S * FS)
         self.kws_post = int(float(self._param("kws_post_s", ks.POST_S)) * FS)
+        self.voice_post_ms = float(self._param("voice_post_ms", dp.VOICE_WIN_MS[1]))
+        self.voice_pre = int(round(dp.VOICE_WIN_MS[0] * FS / 1000))
+        self.voice_post = int(round(self.voice_post_ms * FS / 1000))
 
         if self.method not in METHODS:
             raise ValueError(f"method must be one of {sorted(METHODS)}, not '{self.method}'")
@@ -173,6 +188,8 @@ class AudioNode(Node):
             raise ValueError(f"kws_channel must be 0, 1 or raw, not '{self.kws_channel}'")
         if not 0.3 * FS <= self.kws_post <= (KWS_RING_S - 2.0) * FS:
             raise ValueError(f"kws_post_s must be between 0.3 and {KWS_RING_S - 2.0:g} seconds")
+        if not (self.voice_post_ms == 0 or 2.0 <= self.voice_post_ms <= 250.0):
+            raise ValueError(f"voice_post_ms must be 0 (off) or between 2 and 250, not {self.voice_post_ms:g}")
 
         # A publisher sends messages on a topic; a subscription receives them.
         self.pub = self.create_publisher(SoundEvent, topic, 10)
@@ -261,6 +278,10 @@ class AudioNode(Node):
             f"Keyword spotting is on: listening for {', '.join(self.spotter.words)} on {heard_on} "
             f"(model {self.spotter.model_path.name}, confidence at least {min_conf:g}). "
             f"Each message now goes out about {self.kws_post / FS + 0.1:.1f} s after its sound started.")
+        if self.voice_post:
+            self.get_logger().info(
+                f"A game word's direction is measured again from {dp.VOICE_WIN_MS[0]:g} ms before to "
+                f"{self.voice_post_ms:g} ms after its start, and scored from its error bar.")
 
     def _find_run(self, path):
         """The run folder: as given, or by name inside the package's recordings/ folder."""
@@ -389,10 +410,35 @@ class AudioNode(Node):
                 except Exception as e:              # never let the recogniser stop the directions
                     self.spotter_failed = True
                     self.get_logger().error(f"The keyword spotter failed and is now off: {e}")
+            if ev.get("keyword") and self.voice_post:
+                self._voice_direction(ev)
             if doubtful and not ev.get("keyword"):
                 self.skipped += 1                   # doubtful direction and not a game word: drop it
                 continue
             self._send(ev, stamp_ns)
+
+    def _voice_direction(self, ev):
+        """A game word: measure its direction again over the voice window and score it with the
+        voice score (tools/doa_phat.py). The listener keeps the last 6 s of the four raw mics and a
+        word is only recognised about 1 s after it starts, so its sound is normally still there.
+        If it is not (end of a replay), the word keeps its first look. Returns True if measured."""
+        onset, ring = int(ev["sample"]), self.listener.ring
+        a, b = onset - self.voice_pre, onset + self.voice_post
+        if a < max(ring.n - len(ring.buf), 0) or b > ring.n:
+            self.get_logger().warning(
+                f"Word at {ev['t']:.2f} s: not enough of its sound is left to measure it again, "
+                f"so it keeps the direction from its first {ld.WIN_POST_MS:g} ms.")
+            return False
+        res = dp.localise(ring.read(a, b).astype(np.float64), mic_xy=ma.MIC_POSITIONS)
+        voice_conf = dp.voice_event_fields(res)
+        key = METHODS[self.method]
+        ev["first_look"] = (ev[key], ev[key + "_conf"])            # shown in the log line
+        for name, method in (("gcc", "gcc_phat"), ("robust", "gcc_robust"), ("srp", "srp_phat")):
+            ev[name] = float(np.degrees(res[method]["azimuth_rad"]) % 360.0)
+            ev[name + "_std"] = float(np.degrees(res[method]["azimuth_std_rad"]))
+            ev[name + "_conf"] = voice_conf[method]
+        ev["robust_label"] = res["gcc_robust"]["label"]
+        return True
 
     def _send(self, ev, stamp_ns):
         key = METHODS[self.method]
@@ -419,6 +465,11 @@ class AudioNode(Node):
         if keyword:
             self.keywords_found += 1
             note += f"  keyword {keyword.upper()} ({ev['keyword_conf']:.2f})"
+            if ev.get("first_look"):
+                az0, conf0 = ev["first_look"]
+                az0 = math.degrees(wrap_pi(math.radians(az0) + self.yaw_offset))
+                note += (f"  [voice window; first {ld.WIN_POST_MS:g} ms said {az0:+.1f} deg, "
+                         f"confidence {conf0:.2f}]")
         else:
             # A game word that was heard but not counted (too unsure, or it started too long
             # before or after this sound) is still shown, so the limits can be tuned.

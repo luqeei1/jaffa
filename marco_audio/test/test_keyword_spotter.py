@@ -6,13 +6,17 @@ Three parts:
      needed: the checks hand the rules a made-up list of heard words.
   B. audio_node with a PRETEND spotter that answers from a script. This checks the plumbing:
      which sound and which channel the spotter is given, when the message goes out, what is
-     in it, and that a broken or missing recogniser never stops the directions.
+     in it, and that a broken or missing recogniser never stops the directions. It also checks
+     that a recognised word gets its direction measured again over the voice window (5 ms
+     before to 30 ms after its start, scored with doa_phat.voice_confidence), and that every
+     other sound keeps its first look.
   C. The REAL recogniser (Vosk), only if it and its model are installed on this computer.
      It replays the 28 Oct clap session: 24 claps, and none of them may be called a word.
      If Vosk or the model is missing, part C is skipped and says so.
 
-What it does NOT check: that a real spoken "Polo!" is recognised. That needs recordings of
-people saying it (the "Polo!" session), counted as hits out of 24 and false alarms per minute.
+What it does NOT check: that a real spoken "Polo!" is recognised, or that the voice window
+gives better directions for real words. Both need recordings of people saying it (the "Polo!"
+session): tools/keyword_spotter.py counts the hits, tools/voice_rescore.py the directions.
 
 Run:   python test/test_keyword_spotter.py     (from the marco_audio folder; about a minute)
 """
@@ -41,8 +45,20 @@ REAL_SPOTTER = ks.KeywordSpotter
 audio, _, _, run_trigger, run_min_db, _ = ld.load_run(RUN)
 _listener = ld.Listener(ld.Labels(), None, run_trigger, run_min_db)
 REF = [ev for i in range(0, len(audio), 320) for ev in _listener.feed(audio[i:i + 320])]
+dp, ma = node_module.dp, node_module.ma
 
 results = []
+
+
+def voice_look(ref_ev, post_ms=dp.VOICE_WIN_MS[1]):
+    """What the second look at a word should give, worked out here on its own: robust GCC-PHAT
+    on 5 ms before to post_ms after the start of the sound, scored with voice_confidence.
+    Returns (angle in degrees 0..360, error bar in degrees, confidence)."""
+    on = int(ref_ev["sample"])
+    a, b = on - int(round(dp.VOICE_WIN_MS[0] * FS / 1000)), on + int(round(post_ms * FS / 1000))
+    r = dp.localise(audio[a:b, ma.RAW_CHANNELS].astype(np.float64), mic_xy=ma.MIC_POSITIONS)["gcc_robust"]
+    return (math.degrees(r["azimuth_rad"]) % 360.0, math.degrees(r["azimuth_std_rad"]),
+            dp.voice_confidence(r["azimuth_std_rad"], r["s_u"]))
 
 
 def check(name, passed, extra=""):
@@ -148,8 +164,21 @@ node = make(plan={3: "polo", 7: "marco"}, source="replay", replay_path=str(RUN))
 t0 = rclpy.CLOCK["ns"]
 run_replay(node)
 sent = node.pubs[0].sent
-check("still one message per sound, in the same order", len(sent) == len(REF)
-      and max(abs(wrap_deg(math.degrees(m.azimuth) - r["robust"])) for m, r in zip(sent, REF)) < 1e-3)
+check("still one message per sound, in the same order; every sound except the two words keeps its first look",
+      len(sent) == len(REF) and max(abs(wrap_deg(math.degrees(m.azimuth) - r["robust"]))
+                                    for i, (m, r) in enumerate(zip(sent, REF)) if i not in (2, 6)) < 1e-3
+      and all(abs(m.confidence - r["robust_conf"]) < 1e-6 for i, (m, r) in enumerate(zip(sent, REF)) if i not in (2, 6)))
+want = [voice_look(REF[i]) for i in (2, 6)]
+got = [(math.degrees(sent[i].azimuth) % 360.0, math.degrees(sent[i].azimuth_std), sent[i].confidence) for i in (2, 6)]
+check("the two words: angle, error bar and confidence come from the 5 ms / 30 ms voice window",
+      all(abs(wrap_deg(g[0] - w[0])) < 1e-3 and abs(g[1] - w[1]) < 1e-3 and abs(g[2] - w[2]) < 1e-6
+          for g, w in zip(got, want)),
+      "; ".join(f"{g[0]:.1f} deg +-{g[1]:.1f}, {g[2]:.2f}" for g in got))
+check("...and that second look really differs from the first (so it was taken)",
+      all(abs(wrap_deg(w[0] - REF[i]["robust"])) > 1e-3 or abs(w[2] - REF[i]["robust_conf"]) > 1e-6
+          for w, i in zip(want, (2, 6))))
+check("the log shows both looks, and says at the start that words get a second look",
+      "[voice window; first 2 ms said" in log_text(node) and "measured again from 5 ms before to 30 ms" in log_text(node))
 check("sound 3 is 'polo', sound 7 is 'marco', type = keyword",
       (sent[2].keyword, sent[2].type, sent[6].keyword, sent[6].type) == ("polo", "keyword", "marco", "keyword"))
 check("every other sound: keyword empty, type = sound",
@@ -186,8 +215,10 @@ node = make(plan={doubtful + 1: "polo"}, source="replay", replay_path=str(RUN), 
             min_confidence=0.9)
 run_replay(node)
 words = [m for m in node.pubs[0].sent if m.keyword]
-check("min_confidence: a doubtful 'polo' is still sent, the other doubtful sounds are not",
-      len(node.pubs[0].sent) == kept + 1 and len(words) == 1 and words[0].confidence < 0.9,
+check("min_confidence: a doubtful 'polo' is still sent (with its voice-window confidence), "
+      "the other doubtful sounds are not",
+      len(node.pubs[0].sent) == kept + 1 and len(words) == 1
+      and abs(words[0].confidence - voice_look(REF[doubtful])[2]) < 1e-6,
       f"{kept} + 1 of {len(REF)}")
 
 # 4. Marco's own voice is never given to the spotter ------------------------------------------
@@ -299,6 +330,33 @@ for name, params, words in [("keywords:=maybe", dict(keywords="maybe"), "keyword
         check(name, False, "no error raised")
     except ValueError as e:
         check(name + " -> clear error", words in str(e))
+
+# 10. The voice window: switched off, made longer, refused, or too late --------------------------
+node = make(plan={3: "polo"}, source="replay", replay_path=str(RUN), replay_rate=20, voice_post_ms=0)
+run_replay(node)
+m = node.pubs[0].sent[2]
+check("voice_post_ms:=0: a 'polo' keeps its first look, exactly as before 24 Nov",
+      m.keyword == "polo" and abs(wrap_deg(math.degrees(m.azimuth) - REF[2]["robust"])) < 1e-3
+      and abs(m.confidence - REF[2]["robust_conf"]) < 1e-6 and "voice window" not in log_text(node)
+      and "measured again" not in log_text(node))
+node = make(plan={3: "polo"}, source="replay", replay_path=str(RUN), replay_rate=20, voice_post_ms=50)
+run_replay(node)
+m, w = node.pubs[0].sent[2], voice_look(REF[2], 50)
+check("voice_post_ms:=50: the second look runs to 50 ms after the start",
+      abs(wrap_deg(math.degrees(m.azimuth) - w[0])) < 1e-3 and abs(m.confidence - w[2]) < 1e-6)
+ring = node.listener.ring
+late = dict(REF[2], sample=ring.n - len(ring.buf) - FS)       # its sound left the ring a second ago
+done = node._voice_direction(late)
+check("a word whose sound has already left the 6 s ring keeps its first look, with a warning",
+      done is False and "first_look" not in late and late["robust"] == REF[2]["robust"]
+      and any(kind == "warn" and "not enough of its sound is left" in text
+              for kind, text in node.get_logger().lines))
+for value in (1, 300, -5):
+    try:
+        make(source="replay", replay_path=str(RUN), voice_post_ms=value)
+        check(f"voice_post_ms:={value}", False, "no error raised")
+    except ValueError as e:
+        check(f"voice_post_ms:={value} -> clear error", "voice_post_ms must be" in str(e))
 
 # =============================================================================================
 # C. The real recogniser, if it is installed here

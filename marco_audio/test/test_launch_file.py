@@ -158,6 +158,14 @@ p = audio_params(kws_model="/somewhere/model", kws_min_conf=0.8)
 check("kws_model and kws_min_conf are passed on",
       p["kws_model"] == "/somewhere/model" and p["kws_min_conf"] == 0.8)
 check("keywords:=maybe is refused", "keywords" in (fails(keywords="maybe") or ""))
+p = audio_params()
+voice_default = re.search(r"VOICE_WIN_MS = \(5\.0, ([0-9.]+)\)", (PKG / "tools" / "doa_phat.py").read_text())
+check("voice_post_ms: 30 by default (a number), the same as VOICE_WIN_MS in doa_phat.py",
+      type(p["voice_post_ms"]) is float and p["voice_post_ms"] == 30.0
+      and voice_default is not None and float(voice_default.group(1)) == p["voice_post_ms"])
+check("voice_post_ms:=0 (off) and voice_post_ms:=50 are passed on",
+      audio_params(voice_post_ms=0)["voice_post_ms"] == 0.0 and audio_params(voice_post_ms=50)["voice_post_ms"] == 50.0)
+check("voice_post_ms:=abc is refused", "voice_post_ms" in (fails(voice_post_ms="abc") or ""))
 check("the summary line says whether keywords are on",
       "keywords = auto" in launch()[0].msg and "keywords = false" in launch(keywords="false")[0].msg)
 check("setup.py installs tools/keyword_spotter.py next to the nodes",
