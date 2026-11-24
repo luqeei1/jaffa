@@ -40,6 +40,7 @@ marco_audio/
 │   ├── live_doa.py         live direction finder: every method + chip, saves each run, --replay
 │   ├── keyword_spotter.py  tells the words "marco" and "polo" from every other sound (Vosk)
 │   ├── export_clips.py     small clips.npz of a run's sounds, to share or send for checking
+│   ├── voice_rescore.py    before/after table of the voice window for the words of a saved run
 │   └── make_placeholder_clips.py  writes beeps over the four clips (only to test without the voice)
 ├── sim/                    room simulation (pyroomacoustics) to compare the methods
 │   ├── benchmark.py        all methods x 4 reverberation times x 24 directions x 1/2 m
@@ -321,6 +322,25 @@ fields. This folder is a ROS 2 Humble package with two nodes:
   23 pieces of the same talk were mistaken for "polo" (about 2 a minute), both with confidence
   below 0.8. Runs: `recordings/live_20261117_2213` (the words) and `live_20261117_2222` (the
   talk). Not measured yet: other voices, a noisy room, and the Jetson.
+- **Voice window for the game words (24 Nov 2026).** A word gets its direction measured twice.
+  The first look, like every sound's, uses 5 ms before to 2 ms after the start of the sound:
+  that suits a sharp clap, but the "P" of "Polo" starts softly, so its six mic-pair delays come
+  out blurred. Once the word is recognised, `audio_node` measures its direction again from 5 ms
+  before to 30 ms after its start (`voice_post_ms`, default 30; `0` = off) and takes its
+  confidence from that direction's own error bar (`tools/doa_phat.py`, `voice_confidence`):
+  1 at ±5° or tighter, 0.5 at ±10°, 0 at ±15° or wider, times the check that the delays are
+  physically possible. Claps and other sounds keep the first look. The sound is still in memory
+  when the word is recognised (the listener keeps the last 6 s), so nothing waits longer. On the
+  17 Nov "Polo!" run (24 words, 1 m; `tools/voice_rescore.py`):
+
+  | Set-up (robust GCC-PHAT) | more than 10° off | confidence ≥ 0.5 | of those, right | of those, wrong | worst |
+  |---|---|---|---|---|---|
+  | first look, clap score (before 24 Nov) | 7 | 5 | 2 | 3 | 34.1° |
+  | voice window, voice score | 3 | 21 | 19 | 2 | 15.8° |
+
+  19 of the 24 words were within their own error bar and 22 within twice it. The two wrong words
+  that pass are both from the 90° spot, where all three takes read 9–16° low. Both settings were
+  chosen on this same run, so they still have to be checked on a new recording.
 - **`speech_node`** (Marco's voice) plays `clips/<name>.wav` through the board when a name arrives
   on `/marco/speech/say`, and publishes `true` on `/marco/speech/active` while it plays.
   `audio_node` ignores sounds that start while that is true, so Marco does not report his own
@@ -367,8 +387,9 @@ Checks that need no ROS 2 and no board (stand-in ROS modules in `test/`), from t
 ```bash
 python test/test_audio_node.py     # 28 checks: replay publishes exactly what live_doa.py finds
 python test/test_speech_node.py    # 23 checks: queueing, the speaking flag, a player that fails
-python test/test_launch_file.py    # 45 checks: what the launch file starts, and with what settings
-python test/test_keyword_spotter.py  # 35 checks: which words count, and how audio_node uses the spotter
+python test/test_launch_file.py    # 48 checks: what the launch file starts, and with what settings
+python test/test_keyword_spotter.py  # 44 checks: which words count, how audio_node uses the spotter,
+                                     #   and the second look at a word (voice window)
 ```
 
 With Vosk and its model installed, `test_keyword_spotter.py` runs 4 more checks with the real
@@ -378,6 +399,14 @@ called "marco" or "polo". To see what the spotter says for every sound of a save
 ```bash
 cd tools
 python keyword_spotter.py ../recordings/dirtest_20261028_1921
+```
+
+To see what the voice window does to the words of a saved run (it reads the run's `audio.npy`,
+or its `clips.npz` if that is all there is, and writes `voice_rescore_5-30ms.txt` and `.csv`):
+
+```bash
+cd tools
+python voice_rescore.py ../recordings/live_20261117_2213
 ```
 
 ## 11. Launch file
