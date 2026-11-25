@@ -3,8 +3,8 @@ description: Pose of the OAK Thermal relative to the RealSense COLOUR camera + t
   forward, y left, z up, m) from the colour lens to the thermal lens; rotation roll/pitch/yaw
   in degrees (ROS convention, +pitch = nose down, +yaw = turned left).
 x_forward_m: -0.06
-y_left_m: -0.195
-z_up_m: -0.27
+y_left_m: 0.155
+z_up_m: -0.03
 roll_deg: -0.25
 pitch_deg: 0.0
 yaw_deg: -3.25
@@ -24,5 +24,5 @@ dist:
 - 0.7195112109184265
 - 0.0
 - 0.0
-source: 2026-11-18 tuned by eye in align_view.py (live, current mounting); lens =
+source: 2026-11-24 tuned by eye in align_view.py (live, current mounting); lens =
   OAK Thermal factory calibration

@@ -103,6 +103,85 @@ def test_match_inside_then_nearest_box():
     assert pairs == {0: 1, 1: 0}      # 2nd is 10 px below box 0 (within MATCH_PX); 3rd too far; 4th no depth
 
 
+def test_match_close_person_by_overlap():
+    # Close person: big thermal box, projected RGB box shifted 40 px (projection error) so its
+    # centre falls outside the thermal box, but the boxes overlap: paired.
+    thermal = (60, 10, 120, 170)
+    tbox = (100, 10, 220, 180)
+    pairs, ious = dc.match([(260.0, 95.0)], [thermal], [tbox], return_iou=True)
+    assert pairs == {0: 0} and ious[0] > 0.4
+
+
+def test_match_rejects_neighbour_without_overlap():
+    # Log 2026-11-24 14:39: person at 4.1 m (projected box ~22 x 76 px); the only thermal box is
+    # a warm object 25 px to the side. Close in pixels, but no overlap: not paired.
+    tbox = (118, 60, 140, 136)
+    neighbour = (143, 58, 24, 80)
+    assert dc.match([(129.0, 98.0)], [neighbour], [tbox]) == {}
+    assert dc.match([(129.0, 98.0)], [(120, 62, 22, 74)], [tbox]) == {0: 0}     # its own box
+
+
+def test_match_best_overlap_wins_over_enclosing_box():
+    # A big box enclosing the person (e.g. two people in one box) vs the person's own box:
+    # the projected centre is inside both, the IoU picks the right one.
+    tbox = (100, 50, 130, 130)
+    enclosing = (60, 30, 160, 160)
+    own = (102, 52, 26, 76)
+    assert dc.match([(115.0, 90.0)], [enclosing, own], [tbox]) == {0: 1}
+
+
+def test_match_one_to_one_best_first():
+    tboxes = [(100, 50, 130, 110), (110, 50, 140, 110)]
+    boxes = [(112, 50, 28, 60), (100, 50, 30, 60)]
+    # RGB 0 overlaps box 1 best, RGB 1 overlaps box 0 best.
+    assert dc.match([(115.0, 80.0), (125.0, 80.0)], boxes, tboxes) == {0: 1, 1: 0}
+
+
+def test_far_person_in_front_of_wall_takes_the_person_depth():
+    # 4-5 m: a fifth of the box centre is the person at 4.3 m, the rest the wall at 5.3 m,
+    # plus a few flying pixels in between. The plain 30th percentile would read the wall.
+    rng = np.random.default_rng(1)
+    vals = np.r_[rng.normal(4.3, 0.06, 20), rng.normal(5.3, 0.06, 75), rng.uniform(4.4, 5.2, 5)]
+    zmap = vals.reshape(10, 10).astype(np.float32)
+    region = np.ones_like(zmap, bool)
+    assert np.percentile(vals, dc.DEPTH_PERCENTILE) > 5.0
+    z, cov, note = dc.distance_from_depth(region, zmap, return_note=True)
+    assert note == "nearest surface" and z == pytest.approx(4.3, abs=0.1) and cov == 1.0
+
+
+def test_one_surface_keeps_the_percentile_rule():
+    rng = np.random.default_rng(3)
+    vals = rng.normal(2.0, 0.05, 100)
+    zmap = vals.reshape(10, 10).astype(np.float32)
+    z, _cov, note = dc.distance_from_depth(np.ones_like(zmap, bool), zmap, return_note=True)
+    assert note == "percentile" and z == pytest.approx(np.percentile(zmap, dc.DEPTH_PERCENTILE))
+
+
+def test_small_object_in_front_is_ignored():
+    # A hand / chair edge covering 8 % of the region is not "the nearest surface".
+    vals = np.r_[np.full(8, 1.0), np.full(92, 3.0)]
+    zmap = vals.reshape(10, 10).astype(np.float32)
+    z, _cov, _note = dc.distance_from_depth(np.ones_like(zmap, bool), zmap, return_note=True)
+    assert z == pytest.approx(3.0, abs=0.01)
+
+
+@pytest.mark.parametrize("p", [(-0.8, 0.2, 2.5), (0.0, -0.3, 1.0), (1.2, 0.1, 4.5), (0.4, 0.5, 0.8)])
+def test_lateral_from_thermal_recovers_x(p):
+    # A point seen by the thermal camera through the real lens and mounting: its box centre +
+    # the right Z give back its X in the colour frame.
+    import calibration as calib
+    cal = calib.ThermalCalibration(x_forward_m=-0.06, y_left_m=0.155, z_up_m=-0.03, roll_deg=-0.25,
+                                   yaw_deg=-3.25, fx=183.82, fy=183.66, cx=130.52, cy=97.85,
+                                   model="rational",
+                                   dist=[0.2674, -0.031, -0.0039, -0.0031, 0.0, 0.7195, 0.0, 0.0])
+    intr, transform = cal.intrinsics(), cal.depth_to_thermal()
+    q = dc.transform_points(transform, np.array([p], float))[0]
+    xd, yd = distort(np.array([q[0] / q[2]]), np.array([q[1] / q[2]]), intr)
+    u, v = intr.fx * xd[0] + intr.cx, intr.fy * yd[0] + intr.cy
+    bbox = (u + 0.5 - 10, v + 0.5 - 20, 20, 40)          # box centred on that pixel
+    assert dc.lateral_from_thermal(bbox, p[2], transform, intr) == pytest.approx(p[0], abs=1e-6)
+
+
 def test_analyse_frame_end_to_end(rendered):
     depth, _temp, bbox = rendered
     thermal = [SimpleNamespace(bbox=bbox, confidence=0.8, peak_temp_c=34.5),
@@ -115,6 +194,7 @@ def test_analyse_frame_end_to_end(rendered):
     assert len(rows) == 2
     assert rows[0]["rgb"] is not None and rows[0]["thermal"]["det"] is thermal[0]
     assert rows[0]["thermal"]["z_depth"] == pytest.approx(2.42, abs=0.06)
+    assert rows[0]["thermal"]["x_depth"] is not None and rows[0]["rgb"]["x"] == pytest.approx(-0.3)
     assert rows[0]["thermal"]["z_size"] == pytest.approx(2.45, rel=0.06)
     assert rows[1]["rgb"] is None and rows[1]["thermal"]["det"] is thermal[1]    # thermal only
     assert "thermal only" in dc.row_text("P2", rows[1])
