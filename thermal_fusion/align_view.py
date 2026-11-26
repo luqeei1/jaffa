@@ -21,6 +21,14 @@ Tuning tips (stand ~2 m from the camera, ideally against a cool wall):
     if the error SHRINKS with distance, fix the offset; if it stays CONSTANT, fix the angle;
   - fx/fy scale the projection from the image centre: if things match in the centre
     but drift apart towards the edges, adjust fx (horizontally) / fy (vertically).
+    (fx/fy/cx/cy are in the RAW sensor image: with the camera on its side, fx works
+    vertically on screen.)
+
+Camera mounted vertically (on its side): press o (roll +90 deg) until the thermal panel is
+upright AND the depth overlay lines up (with the wrong sign the panel is upside down and
+the overlay is turned 180 deg against the thermal image), then fine-tune the sliders as usual and write with w. The thermal panel is shown turned
+by the roll rounded to 90 deg; distance_compare.py turns the image for the thermal YOLO the
+same way.
 
 Usage:
   python align_view.py                        # both cameras live
@@ -28,6 +36,7 @@ Usage:
 
 Keys:
   v  toggle blend / edges            w  write calibration YAML
+  o  roll +90 deg (camera mounted on its side)
   r  reload calibration YAML         d  reset sliders to defaults (hand measurement)
   s  save snapshot (thermal + depth + metadata) to ./captures/
   q  quit
@@ -45,7 +54,8 @@ import numpy as np
 import yaml
 
 import calibration as calib
-from geometry import PinholeIntrinsics, backproject, depth_edges, depth_map_in_thermal, project, transform_points
+from geometry import (PinholeIntrinsics, backproject, depth_edges, depth_map_in_thermal, project, rotate_image,
+                      rotate_point, transform_points, upright_quarter_turns)
 
 WINDOW = "Thermal / depth alignment"
 CONTROLS = "Alignment controls"
@@ -61,7 +71,7 @@ TRACKBARS = [
     ("forward cm",   "x_forward_m",  -50,   50,    0.5,  0.01),
     ("left cm",      "y_left_m",     -50,   50,    0.5,  0.01),
     ("up cm",        "z_up_m",       -60,   60,    0.5,  0.01),
-    ("roll deg",     "roll_deg",     -20,   20,    0.25, 1.0),
+    ("roll deg",     "roll_deg",     -180,  180,   0.25, 1.0),    # +-90: camera mounted vertically ('o')
     ("pitch deg",    "pitch_deg",    -20,   20,    0.25, 1.0),
     ("yaw deg",      "yaw_deg",      -20,   20,    0.25, 1.0),
     ("fx px",        "fx",           60,    260,   0.5,  1.0),
@@ -101,7 +111,7 @@ class AlignView:
         self.t_thermal = self.t_depth = None
         self.pts = self.edge_pts = None   # depth-optical points, recomputed once per depth frame
         self.mode = "blend"
-        self.mouse = None
+        self.mouse_px = None
         self.view = None
         self._busy = False
         self._ready = False
@@ -144,6 +154,15 @@ class AlignView:
                   if moved else self.base_cal.source)
         return dataclasses.replace(self.base_cal, **values, source=source)
 
+    def turn_roll(self):
+        """Roll +90 deg (wrapping to -180..180): for a camera mounted vertically, press until
+        the thermal panel is upright AND the depth overlay matches, then fine-tune the sliders."""
+        label, _field, lo, _hi, step, _factor = next(t for t in TRACKBARS if t[1] == "roll_deg")
+        roll = lo + cv2.getTrackbarPos(label, CONTROLS) * step + 90.0
+        roll = (roll + 180.0) % 360.0 - 180.0
+        cv2.setTrackbarPos(label, CONTROLS, int(round((roll - lo) / step)))
+        self.render()
+
     # ---- data -----------------------------------------------------------------------
     def set_thermal(self, temp_c, t):
         self.temp_c, self.t_thermal = temp_c, t
@@ -159,8 +178,18 @@ class AlignView:
 
     def _on_mouse(self, event, x, y, _flags, _param):
         if event == cv2.EVENT_MOUSEMOVE:
-            u, v = x // SCALE, y // SCALE
-            self.mouse = (u, v) if self.temp_c is not None and u < self.temp_c.shape[1] and v < self.temp_c.shape[0] else None
+            self.mouse_px = (x // SCALE, y // SCALE)     # pixel on the shown (maybe turned) panel
+
+    def _mouse_raw(self, turns):
+        """Mouse position as a RAW thermal pixel (the panel may be shown turned), or None."""
+        if getattr(self, "mouse_px", None) is None or self.temp_c is None:
+            return None
+        raw_h, raw_w = self.temp_c.shape
+        shown_w, shown_h = (raw_h, raw_w) if turns % 2 else (raw_w, raw_h)
+        su, sv = self.mouse_px
+        if not (0 <= su < shown_w and 0 <= sv < shown_h):
+            return None
+        return rotate_point(su, sv, (4 - turns) % 4, shown_w, shown_h)
 
     # ---- drawing --------------------------------------------------------------------
     def render(self):
@@ -190,7 +219,10 @@ class AlignView:
                 panel[t_edges] = (0, 0, 255)
                 panel[d_edges] = (0, 255, 0)
                 panel[t_edges & d_edges] = (0, 255, 255)
-            panel = cv2.resize(panel, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_NEAREST)
+            # A camera mounted rotated (roll ~ +-90 / 180) is shown upright; the overlay is
+            # computed on the raw image and turned with it.
+            turns = upright_quarter_turns(cal.roll_deg)
+            panel = cv2.resize(rotate_image(panel, turns), None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_NEAREST)
 
             dt_ms = abs(self.t_thermal - self.t_depth) * 1000 if self.t_thermal and self.t_depth else 0.0
             lines = [
@@ -200,15 +232,20 @@ class AlignView:
                 f"roll {cal.roll_deg:+.2f} pitch {cal.pitch_deg:+.2f} yaw {cal.yaw_deg:+.2f} deg",
                 f"fx {cal.fx:.1f} fy {cal.fy:.1f} cx {cal.cx:.1f} cy {cal.cy:.1f}   lens {cal.model}",
             ]
-            if self.mouse is not None:
-                mu, mv = self.mouse
+            if turns:
+                lines.append(f"shown turned {90 * turns} deg cw (from roll)  [o] roll +90")
+            raw = self._mouse_raw(turns)
+            if raw is not None:
+                mu, mv = raw
                 d = dmap[mv, mu]
                 lines.append(f"({mu},{mv}) {self.temp_c[mv, mu]:.1f} C  depth "
                              + (f"{d:.2f} m" if np.isfinite(d) else "none"))
-                cv2.drawMarker(panel, (mu * SCALE + 1, mv * SCALE + 1), (255, 255, 0), cv2.MARKER_CROSS, 14, 1)
+                su, sv = self.mouse_px
+                cv2.drawMarker(panel, (su * SCALE + 1, sv * SCALE + 1), (255, 255, 0), cv2.MARKER_CROSS, 14, 1)
             for i, line in enumerate(lines):
-                _text(panel, line, (8, 20 + 20 * i))
-            _text(panel, "v mode  w write  r reload  d defaults  s snapshot  q quit", (8, panel.shape[0] - 10), 0.45)
+                _text(panel, line, (8, 20 + 20 * i), 0.5 if not turns % 2 else 0.42)
+            _text(panel, "v mode  o roll+90  w write  r reload  d defaults  s snap  q quit",
+                  (8, panel.shape[0] - 10), 0.45 if not turns % 2 else 0.38)
 
             depth_panel = colour_depth(self.depth_m)
             depth_panel = cv2.resize(depth_panel, (int(depth_panel.shape[1] * panel.shape[0] / depth_panel.shape[0]),
@@ -260,6 +297,8 @@ def handle_key(view, key):
         return False
     if key == ord("v"):
         view.mode = "edges" if view.mode == "blend" else "blend"
+    elif key == ord("o"):
+        view.turn_roll()
     elif key == ord("w"):
         print(f"Wrote {calib.save(view.read_cal())}")
     elif key == ord("r"):

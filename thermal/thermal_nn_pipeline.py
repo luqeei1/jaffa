@@ -59,8 +59,76 @@ def yuv422_gray_to_bgr(yuv):
     return cv2.merge([luma, luma, luma])
 
 
+# ---- camera mounted rotated (e.g. vertically) --------------------------------------------
+# The model was trained on upright people, so a rotated camera's image is turned upright
+# before the NN (quarter_turns_cw clockwise quarter turns, 0-3). Turned by 90 or 270 deg the
+# upright image is portrait (192 x 256): it is scaled to 144 x 192 and padded left and right
+# to the model's 256 x 192 input (letterbox), so people appear 25 % smaller to the model.
+# Boxes come back in the RAW sensor image, so temperatures, smoothing and the fusion geometry
+# stay as they are.
+
+def _letterbox(quarter_turns_cw):
+    """(scale, x offset in px) of the upright image inside the model input."""
+    if quarter_turns_cw % 2 == 0:
+        return 1.0, 0.0
+    scale = min(MODEL_W / MODEL_H, MODEL_H / MODEL_W)        # 192/256: portrait height -> 192
+    return scale, (MODEL_W - MODEL_H * scale) / 2.0
+
+
+def upright_model_input(bgr, quarter_turns_cw=0):
+    """Raw thermal BGR image -> upright (and letterboxed) MODEL_W x MODEL_H model input."""
+    q = quarter_turns_cw % 4
+    img = np.ascontiguousarray(np.rot90(bgr, -q)) if q else bgr
+    if q % 2 == 0:
+        if img.shape[:2] != (MODEL_H, MODEL_W):
+            img = cv2.resize(img, (MODEL_W, MODEL_H), interpolation=cv2.INTER_LINEAR)
+        return img
+    scale, x0 = _letterbox(q)
+    inner_w = int(round(MODEL_H * scale))                     # 144
+    small = cv2.resize(img, (inner_w, MODEL_H), interpolation=cv2.INTER_AREA)
+    out = np.zeros((MODEL_H, MODEL_W, 3), np.uint8)
+    out[:, int(round(x0)):int(round(x0)) + inner_w] = small
+    return out
+
+
+def model_box_to_sensor(xmin, ymin, xmax, ymax, quarter_turns_cw=0):
+    """Normalised box from the upright model input -> normalised box in the raw sensor image."""
+    q = quarter_turns_cw % 4
+    if q % 2:
+        scale, x0 = _letterbox(q)
+        inner_w = MODEL_H * scale
+        xmin, xmax = ((np.array([xmin, xmax]) * MODEL_W - x0) / inner_w).tolist()
+    corners = []
+    for x, y in ((xmin, ymin), (xmax, ymax)):
+        for _ in range(q):                    # undo one clockwise turn: (x, y) -> (y, 1 - x)
+            x, y = y, 1.0 - x
+        corners.append((x, y))
+    (xa, ya), (xb, yb) = corners
+    clip = lambda v: float(min(max(v, 0.0), 1.0))
+    return clip(min(xa, xb)), clip(min(ya, yb)), clip(max(xa, xb)), clip(max(ya, yb))
+
+
+class SensorDetection:
+    """An NN detection with its box mapped back to the raw sensor image (same attributes as
+    DepthAI's ImgDetection that detection_utils.nn_detections uses)."""
+    __slots__ = ("xmin", "ymin", "xmax", "ymax", "confidence", "label")
+
+    def __init__(self, xmin, ymin, xmax, ymax, confidence, label=0):
+        self.xmin, self.ymin, self.xmax, self.ymax = xmin, ymin, xmax, ymax
+        self.confidence, self.label = confidence, label
+
+
+def detections_to_sensor(detections, quarter_turns_cw=0):
+    """DepthAI detections from an upright model input -> detections in the raw sensor image."""
+    if quarter_turns_cw % 4 == 0:
+        return list(detections)
+    return [SensorDetection(*model_box_to_sensor(d.xmin, d.ymin, d.xmax, d.ymax, quarter_turns_cw),
+                            confidence=d.confidence, label=getattr(d, "label", 0)) for d in detections]
+
+
 class GrayToBGRPlanar(dai.node.HostNode):
-    """Host node: Thermal color (YUV422i grey) -> BGR888p 256x192 frame for the NN.
+    """Host node: Thermal color (YUV422i grey) -> BGR888p 256x192 frame for the NN,
+    turned upright first when the camera is mounted rotated (quarter_turns_cw).
 
     Keeps the sequence number and timestamps of the source frame, so the NN result can be
     paired with the temperature frame of the same capture."""
@@ -68,15 +136,15 @@ class GrayToBGRPlanar(dai.node.HostNode):
     def __init__(self):
         super().__init__()
         self.out.setPossibleDatatypes([(dai.DatatypeEnum.ImgFrame, True)])
+        self.quarter_turns_cw = 0
 
-    def build(self, frames):
+    def build(self, frames, quarter_turns_cw=0):
         self.link_args(frames)
+        self.quarter_turns_cw = quarter_turns_cw % 4
         return self
 
     def process(self, frame):
-        bgr = yuv422_gray_to_bgr(frame.getFrame())
-        if bgr.shape[:2] != (MODEL_H, MODEL_W):
-            bgr = cv2.resize(bgr, (MODEL_W, MODEL_H), interpolation=cv2.INTER_LINEAR)
+        bgr = upright_model_input(yuv422_gray_to_bgr(frame.getFrame()), self.quarter_turns_cw)
         out = dai.ImgFrame()
         out.setCvFrame(bgr, dai.ImgFrame.Type.BGR888p)  # interleaved array -> planar buffer
         out.setSequenceNum(frame.getSequenceNum())
@@ -85,12 +153,15 @@ class GrayToBGRPlanar(dai.node.HostNode):
         self.out.send(out)
 
 
-def build_pipeline(pipeline, fps=25.0):
+def build_pipeline(pipeline, fps=25.0, quarter_turns_cw=0):
     """Create Thermal -> (host) GrayToBGRPlanar -> ParsingNeuralNetwork.
 
+    quarter_turns_cw: clockwise quarter turns that make the raw image upright (camera mounted
+    rotated). The detections then refer to the upright image: pass them through
+    detections_to_sensor(dets, quarter_turns_cw) to get raw-image boxes.
     Returns (q_temperature, q_detections)."""
     thermal = pipeline.create(dai.node.Thermal).build(fps=fps)
-    to_bgr = pipeline.create(GrayToBGRPlanar).build(thermal.color)
+    to_bgr = pipeline.create(GrayToBGRPlanar).build(thermal.color, quarter_turns_cw)
 
     # build() downloads the model archive from the Luxonis model zoo on first use (cached
     # afterwards in %LOCALAPPDATA%\depthai\cache) and creates the parser from its config.

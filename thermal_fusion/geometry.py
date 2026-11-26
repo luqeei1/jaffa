@@ -247,3 +247,37 @@ def depth_edges(depth_m, rel_jump=0.08, abs_jump=0.05, max_gap=8):
     valid = d > 0
     return (_row_edges(d, valid, rel_jump, abs_jump, max_gap)
             | _row_edges(d.T, valid.T, rel_jump, abs_jump, max_gap).T)
+
+
+# ---- thermal camera mounted rotated (e.g. vertically) ----------------------------------
+# All geometry stays in the RAW sensor image (the factory lens model and the calibration
+# are defined there). Only what people and the person detector look at is turned upright.
+# How far to turn follows from the calibration's roll: +roll = right side down, which puts
+# the scene's "up" on the LEFT of the raw image at +90 deg, so the raw image is turned
+# clockwise by the roll rounded to quarter turns.
+
+def upright_quarter_turns(roll_deg):
+    """Clockwise quarter turns (0-3) that make the raw thermal image upright for this roll."""
+    return int(round(roll_deg / 90.0)) % 4
+
+
+def rotate_image(img, quarter_turns_cw):
+    """Turn an image clockwise by quarter turns (0-3)."""
+    return np.ascontiguousarray(np.rot90(img, -(quarter_turns_cw % 4)))
+
+
+def rotate_point(u, v, quarter_turns_cw, width, height):
+    """Pixel (u, v) of a width x height image -> the same pixel after rotate_image."""
+    for _ in range(quarter_turns_cw % 4):
+        u, v = height - 1 - v, u               # one clockwise turn: top-left -> top-right
+        width, height = height, width
+    return u, v
+
+
+def rotate_box(bbox, quarter_turns_cw, width, height):
+    """Box (x, y, w, h) covering pixels [x, x+w) x [y, y+h) -> the same box after rotate_image."""
+    x, y, w, h = bbox
+    for _ in range(quarter_turns_cw % 4):
+        x, y, w, h = height - (y + h), x, h, w
+        width, height = height, width
+    return x, y, w, h

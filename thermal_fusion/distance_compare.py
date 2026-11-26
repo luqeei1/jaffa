@@ -44,6 +44,9 @@ Usage (from the fusion folder):
   python distance_compare.py --height 1.75            # your height, for the size estimate
   python distance_compare.py --conf 0.5               # thermal YOLO confidence (default 0.35)
   python distance_compare.py --headless 30            # no window: print 30 frames (testing)
+  python distance_compare.py --half                   # Jetson: RGB YOLO on the GPU ('auto') in FP16
+  python distance_compare.py --device cpu             # force the CPU
+  python distance_compare.py --device cuda --weights yolo26n.engine   # Jetson, TensorRT engine
 """
 
 import argparse
@@ -79,7 +82,8 @@ for _p in (HD_DIR, TC_DIR):
         sys.path.append(_p)   # appended: fusion's own modules (sources.py, ...) keep priority
 
 import calibration as calib                                              # noqa: E402
-from geometry import backproject, distort, project, transform_points    # noqa: E402
+from geometry import (backproject, distort, project, rotate_box, rotate_image,   # noqa: E402
+                      transform_points, upright_quarter_turns)
 
 DEPTH_PERCENTILE = 30.0      # same as Human_detection's LocaliseConfig
 REGION_W, REGION_H = 0.5, 0.6  # central part of a box used for depth, same as Human_detection
@@ -327,6 +331,7 @@ def analyse_frame(thermal_dets, depth_m, color_intr, evidence, cal, height_m, st
     th_intr = cal.intrinsics()
     transform = cal.depth_to_thermal()
     shape = (th_intr.height, th_intr.width)
+    sideways = upright_quarter_turns(cal.roll_deg) % 2 == 1   # camera mounted at +-90 deg
     zmap = ref_z_in_thermal(backproject(depth_m, color_intr, stride=stride), transform, th_intr)
 
     thermal = []
@@ -334,7 +339,9 @@ def analyse_frame(thermal_dets, depth_m, color_intr, evidence, cal, height_m, st
         z_depth, coverage, depth_note = distance_from_depth(box_mask(d.bbox, shape, REGION_W, REGION_H), zmap,
                                                             return_note=True)
         x_depth = lateral_from_thermal(d.bbox, z_depth, transform, th_intr) if z_depth is not None else None
-        z_size, why = distance_from_size(d.bbox, th_intr, height_m)
+        # The size estimate measures the box along the raw image's vertical axis: meaningless
+        # with the camera on its side (not used for the comparison anyway).
+        z_size, why = (None, "camera on its side") if sideways else distance_from_size(d.bbox, th_intr, height_m)
         thermal.append({"det": d, "z_depth": z_depth, "x_depth": x_depth, "coverage": coverage,
                         "depth_note": depth_note, "z_size": z_size, "size_note": why})
 
@@ -390,18 +397,26 @@ def row_text(tag, row):
             f"size {_fmt(zs)} ({diff_s}){note}")
 
 
-def draw(temp_c, color, frame, gt, logging_rows, dt_ms):
+def draw(temp_c, color, frame, gt, logging_rows, dt_ms, quarter_turns_cw=0):
+    """quarter_turns_cw: the thermal panel is shown turned upright (camera mounted rotated);
+    boxes are in the raw image and turned with it."""
     lo, hi = np.nanpercentile(temp_c, [2, 98])
     grey = np.clip((temp_c - lo) / max(hi - lo, 0.5) * 255, 0, 255).astype(np.uint8)
-    th = cv2.resize(cv2.applyColorMap(grey, cv2.COLORMAP_INFERNO), None, fx=SCALE, fy=SCALE,
-                    interpolation=cv2.INTER_NEAREST)
+    raw_h, raw_w = grey.shape
+    th = cv2.resize(rotate_image(cv2.applyColorMap(grey, cv2.COLORMAP_INFERNO), quarter_turns_cw), None,
+                    fx=SCALE, fy=SCALE, interpolation=cv2.INTER_NEAREST)
+
+    def shown(bbox):          # raw-image box -> integer box on the (turned) panel
+        x, y, w, h = rotate_box(bbox, quarter_turns_cw, raw_w, raw_h)
+        return int(round(x)), int(round(y)), int(round(w)), int(round(h))
+
     col = color.copy()
     lines = []
     for k, row in enumerate(frame["rows"]):
         r, t = row["rgb"], row["thermal"]
         tag = f"P{k + 1}"
         if t is not None:
-            x, y, w, h = t["det"].bbox
+            x, y, w, h = shown(t["det"].bbox)
             cv2.rectangle(th, (x * SCALE, y * SCALE), ((x + w) * SCALE, (y + h) * SCALE), THERMAL_COLOUR, 2)
             label = f"{tag} {t['det'].confidence:.2f}"
             if t["z_depth"] is not None:
@@ -413,7 +428,8 @@ def draw(temp_c, color, frame, gt, logging_rows, dt_ms):
             _text(col, f"{tag} {_fmt(r['z'])} {_fmt_x(r['x'])}", (x1 + 3, y1 + 16), RGB_COLOUR)
             if r["tbox"] is not None:
                 a, b, c, d = r["tbox"]
-                cv2.rectangle(th, (a * SCALE, b * SCALE), (c * SCALE, d * SCALE), RGB_COLOUR, 1)
+                x, y, w, h = shown((a, b, c - a, d - b))
+                cv2.rectangle(th, (x * SCALE, y * SCALE), ((x + w) * SCALE, (y + h) * SCALE), RGB_COLOUR, 1)
         lines.append(row_text(tag, row))
     if not lines:
         lines.append("nobody detected")
@@ -538,6 +554,13 @@ def main():
     parser.add_argument("--no-smooth", action="store_true", help="thermal YOLO boxes without temporal smoothing")
     parser.add_argument("--headless", type=int, default=0, metavar="N", help="no window: print N frames and exit")
     parser.add_argument("--no-log", action="store_true", help="do not write logs/distance_<time>.csv")
+    parser.add_argument("--device", default="auto",
+                        help="RGB YOLO device: 'auto' (default: GPU if PyTorch sees one, else CPU), "
+                             "'cpu', 'cuda', 'cuda:0', ...")
+    parser.add_argument("--half", action="store_true", help="RGB YOLO in FP16 (GPU only, ignored on CPU)")
+    parser.add_argument("--weights", default=None,
+                        help="RGB YOLO weights (default: yolo26n.pt from the RGB-D folder); "
+                             "a TensorRT .engine exported on the Jetson also works (with --device cuda)")
     args = parser.parse_args()
 
     import depthai as dai
@@ -550,12 +573,22 @@ def main():
         print(f"Note: the camera already drops boxes below {tnn.DEVICE_CONF_FLOOR}; --conf {conf} acts like that.")
 
     cal = calib.load()
+    turns = upright_quarter_turns(cal.roll_deg)
     print(f"calibration: {calib.DEFAULT_PATH}\n  lens {cal.model}; thermal {cal.y_left_m * 100:+.1f} cm left, "
-          f"{cal.z_up_m * 100:+.1f} cm up, yaw {cal.yaw_deg:+.2f} deg")
-    print("Loading RGB YOLO ...")
-    weights = os.path.join(HD_DIR, "yolo26n.pt")
+          f"{cal.z_up_m * 100:+.1f} cm up, roll {cal.roll_deg:+.2f}, yaw {cal.yaw_deg:+.2f} deg")
+    if turns:
+        print(f"  camera mounted rotated: thermal image turned {90 * turns} deg clockwise for the "
+              f"thermal YOLO and the display" + (" (letterboxed: people 25 % smaller to the model)"
+                                                  if turns % 2 else ""))
+    weights = args.weights or os.path.join(HD_DIR, "yolo26n.pt")
     # The weights are not in git: if rgbd/ has no copy, Ultralytics downloads yolo26n.pt (once).
-    pipeline = Pipeline(PersonDetector(DetectorConfig(model_path=weights if os.path.exists(weights) else "yolo26n.pt")))
+    if not args.weights and not os.path.exists(weights):
+        weights = "yolo26n.pt"
+    print(f"Loading RGB YOLO {weights} ...")
+    detector = PersonDetector(DetectorConfig(model_path=weights, device=args.device, half=args.half))
+    print(f"  RGB YOLO device: {detector.device}" + (" (FP16)" if detector.half else "")
+          + ("  (--half ignored: FP16 needs a GPU)" if args.half and not detector.half else ""))
+    pipeline = Pipeline(detector)
     smoother = None if args.no_smooth else BoxSmoother()
 
     gt = None
@@ -571,7 +604,7 @@ def main():
         print(f"logging every distance to {log_path} (l pauses)")
     window = "distance: RGB YOLO vs thermal YOLO"
     with dai.Pipeline(True) as dpipe, RealSenseSource() as rgbd:
-        q_temp, q_det = tnn.build_pipeline(dpipe)
+        q_temp, q_det = tnn.build_pipeline(dpipe, quarter_turns_cw=turns)
         pairer = tnn.FramePairer()
         dpipe.start()
         print(f"thermal YOLO running on the camera (confidence >= {conf:.2f}); "
@@ -595,7 +628,8 @@ def main():
                     if temp_msg is None:
                         continue
                     temp_c = temp_msg.getCvFrame().astype(np.float32)
-                    raw = nn_detections(list(det_msg.detections), temp_c, min_confidence=conf)
+                    raw = nn_detections(tnn.detections_to_sensor(det_msg.detections, turns), temp_c,
+                                        min_confidence=conf)
                     thermal_dets = smoother.update(raw, temp_c) if smoother else raw
                     t_th = time.perf_counter()
                     thermal_no += 1
@@ -626,7 +660,8 @@ def main():
                     if frame_no >= args.headless:
                         break
                     continue
-                view = draw(temp_c, color, frame, gt, n_logged if log_writer and not log_paused else None, dt_ms)
+                view = draw(temp_c, color, frame, gt, n_logged if log_writer and not log_paused else None, dt_ms,
+                            turns)
                 cv2.imshow(window, view)
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord("q") or cv2.getWindowProperty(window, cv2.WND_PROP_VISIBLE) < 1:
