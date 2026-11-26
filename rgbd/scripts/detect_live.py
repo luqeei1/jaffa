@@ -4,15 +4,19 @@ Run from the Human_detection folder:
     python -m scripts.detect_live                  # live
     python -m scripts.detect_live --bag out.db3    # playback
     python -m scripts.detect_live --print          # also print each FrameEvidence to the console
+    python -m scripts.detect_live --device cuda --half    # GPU, FP16 (default device "auto" = GPU if available)
+    python -m scripts.detect_live --stream --depth # no window: view in a browser at http://localhost:8080/
 
 Green box = POSITION (3D from depth), orange box = BEARING (direction only).
 Thin inner rectangle = depth region used for localisation.
 Label: confidence, Z and X (m), lateral and along-ray sigma (m), EDGE if the box touches the image edge.
-Keys: q quit, space pause, d toggle depth view, s snapshot.
+Keys (window mode): q quit, space pause, d toggle depth view, s snapshot. In --stream mode, Ctrl+C quits.
 """
 
 import argparse
 import math
+import os
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +25,7 @@ import cv2
 import numpy as np
 
 from core import POSITION, DetectorConfig, PersonDetector, Pipeline, ray_sigmas, shrunk_region
+from scripts.stream import MjpegServer
 from scripts.view import colorize_depth
 from sources import RealSenseSource
 
@@ -89,78 +94,115 @@ def main():
     parser.add_argument("--model", default=defaults.model_path, help="YOLO weights (downloaded on first use)")
     parser.add_argument("--conf", type=float, default=defaults.conf, help="confidence threshold")
     parser.add_argument("--imgsz", type=int, default=defaults.imgsz, help="inference image size")
+    parser.add_argument("--device", default=defaults.device,
+                        help='inference device: "auto" (GPU if available), "cpu", "cuda", "cuda:0", ...')
+    parser.add_argument("--half", action="store_true", help="FP16 inference (GPU only, ignored on CPU)")
     parser.add_argument("--bag", help="play back this recording (.db3 or .bag) instead of the live camera")
     parser.add_argument("--print", dest="print_dets", action="store_true",
                         help="print the whole FrameEvidence every frame, including empty frames")
+    parser.add_argument("--stream", nargs="?", type=int, const=8080, metavar="PORT",
+                        help="serve the annotated video to a browser on PORT (default 8080) instead of a window; "
+                             "on Linux this is switched on automatically when there is no display")
+    parser.add_argument("--depth", action="store_true", help="start with the depth view shown next to colour")
     args = parser.parse_args()
+    if args.stream is None and sys.platform.startswith("linux") and not (
+            os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        print("No display found (e.g. SSH session): streaming to the browser instead of opening a window.")
+        args.stream = 8080
 
-    config = DetectorConfig(model_path=args.model, conf=args.conf, imgsz=args.imgsz)
+    config = DetectorConfig(model_path=args.model, conf=args.conf, imgsz=args.imgsz,
+                            device=args.device, half=args.half)
     print(f"Loading {config.model_path} (conf={config.conf}, imgsz={config.imgsz})...")
     detector = PersonDetector(config)
+    print(f"Device: {detector.device}" + ("  (FP16)" if detector.half else ""))
+    if args.half and not detector.half:
+        print("  --half ignored: FP16 needs a GPU")
     pipeline = Pipeline(detector)
     loc_config = pipeline.config.localise
 
-    with RealSenseSource(bag=args.bag) as src:
-        print(f"Source: {'bag ' + args.bag if src.is_playback else 'live camera'}")
-        detector.warmup(src.intrinsics.height, src.intrinsics.width)
+    server = None
+    try:
+        with RealSenseSource(bag=args.bag) as src:
+            print(f"Source: {'bag ' + args.bag if src.is_playback else 'live camera'}")
+            detector.warmup(src.intrinsics.height, src.intrinsics.width)
 
-        cv2.namedWindow(WINDOW)
-        paused = False
-        show_depth = False
-        color = depth_m = annotated = evidence = None
-        det_ms = loop_fps = None
-        last_t = time.perf_counter()
-
-        while True:
-            if not paused or color is None:
-                frame = src.read()
-                if frame is None:
-                    print("End of bag.")
-                    break
-                color, depth_m, timestamp_ms, frame_number = frame
-
-                evidence = pipeline.process(color, depth_m, src.intrinsics, timestamp_ms, frame_number)
-                det_ms = smooth(det_ms, pipeline.last_detect_ms)
-                if args.print_dets:
-                    print_evidence(evidence)
-
-                now = time.perf_counter()
-                loop_fps = smooth(loop_fps, 1.0 / max(now - last_t, 1e-6))
-                last_t = now
-
-            left = color.copy()
-            draw_detections(left, evidence.detections, loc_config)
-            cv2.putText(left, f"det {det_ms:.1f} ms ({1000.0 / det_ms:.0f} FPS) | loop {loop_fps:.1f} FPS",
-                        (10, 22), FONT, 0.55, (0, 255, 255), 2)
-            cv2.putText(left, f"{len(evidence.detections)} detections | h_fov {math.degrees(evidence.h_fov):.1f} deg"
-                        + ("  PAUSED" if paused else ""), (10, 46), FONT, 0.55, (0, 255, 255), 2)
-            if show_depth:
-                right = colorize_depth(depth_m)
-                draw_detections(right, evidence.detections, loc_config)
-                annotated = np.hstack([left, right])
+            if args.stream is not None:
+                server = MjpegServer(port=args.stream)
+                print("Streaming to the browser (Ctrl+C to stop): " + "  or  ".join(server.urls()))
             else:
-                annotated = left
-            cv2.imshow(WINDOW, annotated)
+                cv2.namedWindow(WINDOW)
+            run(src, pipeline, loc_config, args, server)
+    except KeyboardInterrupt:
+        print("Stopped.")
+    finally:
+        if server is not None:
+            server.close()
+        else:
+            cv2.destroyAllWindows()
 
-            key = cv2.waitKey(1 if not paused else 30) & 0xFF
-            if key == ord("q"):
-                break
-            if key == ord(" "):
-                paused = not paused
-                last_t = time.perf_counter()
-            elif key == ord("d"):
-                show_depth = not show_depth
-            elif key == ord("s"):
-                SNAPSHOT_DIR.mkdir(exist_ok=True)
-                stem = SNAPSHOT_DIR / f"det_{datetime.now():%Y%m%d_%H%M%S_%f}"
-                cv2.imwrite(f"{stem}_color.png", color)
-                cv2.imwrite(f"{stem}_annotated.png", annotated)
-                np.save(f"{stem}_depth.npy", depth_m)
-                print(f"Saved {stem}_color.png, _annotated.png, _depth.npy")
-            if cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:
-                break
 
-    cv2.destroyAllWindows()
+def render(color, depth_m, evidence, loc_config, det_ms, loop_fps, paused, show_depth):
+    left = color.copy()
+    draw_detections(left, evidence.detections, loc_config)
+    cv2.putText(left, f"det {det_ms:.1f} ms ({1000.0 / det_ms:.0f} FPS) | loop {loop_fps:.1f} FPS",
+                (10, 22), FONT, 0.55, (0, 255, 255), 2)
+    cv2.putText(left, f"{len(evidence.detections)} detections | h_fov {math.degrees(evidence.h_fov):.1f} deg"
+                + ("  PAUSED" if paused else ""), (10, 46), FONT, 0.55, (0, 255, 255), 2)
+    if not show_depth:
+        return left
+    right = colorize_depth(depth_m)
+    draw_detections(right, evidence.detections, loc_config)
+    return np.hstack([left, right])
+
+
+def run(src, pipeline, loc_config, args, server):
+    """Read -> detect -> draw until quit or end of bag. Shows a window, or publishes to `server` if given."""
+    paused = False
+    show_depth = args.depth
+    color = depth_m = evidence = None
+    det_ms = loop_fps = None
+    last_t = time.perf_counter()
+
+    while True:
+        if not paused or color is None:
+            frame = src.read()
+            if frame is None:
+                print("End of bag.")
+                return
+            color, depth_m, timestamp_ms, frame_number = frame
+
+            evidence = pipeline.process(color, depth_m, src.intrinsics, timestamp_ms, frame_number)
+            det_ms = smooth(det_ms, pipeline.last_detect_ms)
+            if args.print_dets:
+                print_evidence(evidence)
+
+            now = time.perf_counter()
+            loop_fps = smooth(loop_fps, 1.0 / max(now - last_t, 1e-6))
+            last_t = now
+
+        annotated = render(color, depth_m, evidence, loc_config, det_ms, loop_fps, paused, show_depth)
+        if server is not None:
+            server.publish(annotated)
+            continue
+
+        cv2.imshow(WINDOW, annotated)
+        key = cv2.waitKey(1 if not paused else 30) & 0xFF
+        if key == ord("q"):
+            return
+        if key == ord(" "):
+            paused = not paused
+            last_t = time.perf_counter()
+        elif key == ord("d"):
+            show_depth = not show_depth
+        elif key == ord("s"):
+            SNAPSHOT_DIR.mkdir(exist_ok=True)
+            stem = SNAPSHOT_DIR / f"det_{datetime.now():%Y%m%d_%H%M%S_%f}"
+            cv2.imwrite(f"{stem}_color.png", color)
+            cv2.imwrite(f"{stem}_annotated.png", annotated)
+            np.save(f"{stem}_depth.npy", depth_m)
+            print(f"Saved {stem}_color.png, _annotated.png, _depth.npy")
+        if cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:
+            return
 
 
 if __name__ == "__main__":

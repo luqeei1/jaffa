@@ -2,4 +2,5 @@ pyrealsense2>=2.55
 opencv-python>=4.8
 numpy>=1.24
 ultralytics>=8.4
+pyyaml>=6.0  # ultralytics imports it but 8.4.2xx no longer declares it
 pytest>=7.4

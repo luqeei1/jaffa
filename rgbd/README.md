@@ -63,11 +63,17 @@ python -m scripts.detect_live                         # person detection, live
 python -m scripts.detect_live --bag recordings\test.db3   # person detection on a recording
 python -m scripts.detect_live --model yolo26s.pt --conf 0.5 --imgsz 480   # other settings
 python -m scripts.detect_live --bag recordings\test.db3 --print           # also print 3D results
+python -m scripts.detect_live --device cuda --half    # GPU + FP16 (default device "auto" = GPU if available)
+python -m scripts.detect_live --stream --depth        # no window: view in a browser at http://localhost:8080/
 
 python -m pytest tests -v                             # run the tests
 ```
 
 `detect_live` keys: `q` quit, `space` pause, `d` toggle depth view, `s` save `snapshots/det_<time>_color.png`, `_annotated.png`, `_depth.npy`.
+
+`--stream [PORT]` (default 8080) replaces the window with an MJPEG stream for when there is no display, e.g. over SSH. On Linux it switches on automatically when no display is found. Open the printed URL; VS Code Remote-SSH forwards the port automatically, otherwise use `ssh -L 8080:localhost:8080 <jetson>`. Keys don't apply in this mode: `--depth` starts with the depth view on, and Ctrl+C quits.
+
+On the Jetson, use the venv that has the Jetson (CUDA) build of PyTorch: `source .venv/bin/activate` first. The system Python has no pyrealsense2 or GPU torch.
 
 The `recordings` folder must exist before you record (`mkdir recordings`). pyrealsense2 2.59 only records to `.db3` (a `.bag` path is refused), so recordings use that extension.
 

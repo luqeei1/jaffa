@@ -16,7 +16,19 @@ class DetectorConfig:
     model_path: str = "yolo26n.pt"
     conf: float = 0.3
     imgsz: int = 640
-    device: str = "cpu"
+    device: str = "auto"  # "auto" = first CUDA GPU if available, else CPU; or "cpu", "cuda", "cuda:0", "0", ...
+    half: bool = False  # FP16 inference; GPU only, ignored on CPU
+
+
+def resolve_device(device):
+    """Turn "auto" into "cuda:0" when torch sees a GPU, otherwise "cpu"; pass anything else through."""
+    if device != "auto":
+        return device
+    try:
+        import torch
+    except ImportError:
+        return "cpu"
+    return "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 @dataclass(frozen=True)
@@ -45,6 +57,8 @@ class PersonDetector:
             from ultralytics import YOLO
             model = YOLO(self.config.model_path)
         self.model = model
+        self.device = resolve_device(self.config.device)
+        self.half = self.config.half and self.device != "cpu"
 
     def detect(self, color_bgr):
         """Return a list of Detection for people in a BGR uint8 image ([] if none)."""
@@ -52,7 +66,8 @@ class PersonDetector:
             color_bgr,
             conf=self.config.conf,
             imgsz=self.config.imgsz,
-            device=self.config.device,
+            device=self.device,
+            quantize=16 if self.half else None,  # FP16; replaces Ultralytics' deprecated `half=True`
             classes=[PERSON_CLASS_ID],
             verbose=False,
         )
